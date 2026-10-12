@@ -35,13 +35,29 @@ function updateControls() {
   $('download-log').disabled = !job?.logs?.length;
 }
 function readConfig() {
-  return { channel: $('channel').value.trim(), botCount: Number($('bot-count').value), prefix: $('prefix').value.trim(), message: $('message').value.trim(), interval: Number($('interval').value), limit: Number($('limit').value) };
+  const common = { platform: $('platform').value, message: $('message').value.trim(), interval: Number($('interval').value), limit: Number($('limit').value) };
+  return common.platform === 'instagram'
+    ? { ...common, accountId: $('ig-account').value.trim(), recipientId: $('ig-recipient').value.trim(), accessToken: $('ig-token').value.trim() }
+    : { ...common, channel: $('channel').value.trim(), botCount: Number($('bot-count').value), prefix: $('prefix').value.trim() };
+}
+function updatePlatform() {
+  const instagram = $('platform').value === 'instagram';
+  $('tlk-fields').hidden = instagram;
+  $('tlk-fields').disabled = instagram;
+  $('instagram-fields').hidden = !instagram;
+  $('instagram-fields').disabled = !instagram;
+  $('message').placeholder = instagram ? 'DM으로 보낼 메시지를 입력하세요.' : '채널에 보낼 메시지를 입력하세요.';
+  $('schedule-help').textContent = instagram ? '한 계정으로 설정한 간격마다 DM을 보냅니다. 첫 메시지는 바로 전송되며, 권한·응답 시간·전송 제한 오류가 발생하면 중지합니다.' : '각 봇이 설정한 간격마다 독립적으로 보냅니다. 첫 메시지는 연결 완료 후 바로 전송되며, 총 전송 수는 모든 봇의 합계입니다.';
+  $('form-note').textContent = instagram ? '먼저 메시지를 보낸 상대와 응답 가능한 대화에서 사용하세요.' : '운영하거나 자동 전송이 허용된 채널에서 사용하세요.';
+  updateSummary();
 }
 function updateSummary() {
   const config = readConfig();
   $('char-count').textContent = `${$('message').value.length.toLocaleString('ko-KR')} / 1,000`;
-  $('summary').textContent = `봇 ${config.botCount || '—'}개가 각각 ${$('interval').value === '' ? '—' : config.interval}초 간격으로 합계 ${config.limit || '—'}건 전송`;
+  const sender = config.platform === 'instagram' ? 'Instagram 계정 1개가' : `봇 ${config.botCount || '—'}개가 각각`;
+  $('summary').textContent = `${sender} ${$('interval').value === '' ? '—' : config.interval}초 간격으로 합계 ${config.limit || '—'}건 전송`;
 }
+$('platform').addEventListener('change', updatePlatform);
 $('run-form').addEventListener('input', updateSummary);
 document.querySelectorAll('[data-step]').forEach(button => { button.onclick = () => { $('bot-count').value = Math.min(5, Math.max(1, Number($('bot-count').value) + Number(button.dataset.step))); updateSummary(); }; });
 
@@ -102,7 +118,11 @@ $('run-form').addEventListener('submit', async event => {
   if (!connected) { openSettings(); return; }
   if (busy || activeStates.has(job?.status)) return;
   busy = true; generation++; updateControls();
-  try { const result = await request('/api/start', { method: 'POST', body: readConfig() }); render(result.job); }
+  try {
+    const result = await request('/api/start', { method: 'POST', body: readConfig() });
+    $('ig-token').value = '';
+    render(result.job);
+  }
   catch (error) { showError('form-error', error); connectionState(false); }
   finally { busy = false; updateControls(); schedulePoll(); }
 });
@@ -123,16 +143,24 @@ function render(nextJob) {
   $('job-status').textContent = job ? labels[job.status] || job.status : '대기 중';
   $('job-status').className = `pill ${job?.status || ''}`;
   setMetric('sent', job?.sent || 0, '건');
+  const instagram = job?.config.platform === 'instagram';
+  $('sender-label').textContent = instagram ? '보내는 계정' : '참가한 봇';
   setMetric('active-bots', job?.bots?.length || 0, '개');
   const progress = job ? Math.min(100, Math.round(job.sent / job.config.limit * 100)) : 0;
   $('progress').style.width = `${progress}%`;
   $('progress').parentElement.setAttribute('aria-valuenow', String(progress));
-  $('run-detail').textContent = job ? `#${job.config.channel} · ${job.sent} / ${job.config.limit}건` : '실행을 시작하면 여기에 표시됩니다.';
+  $('run-detail').textContent = job ? `${instagram ? 'DM · ' + job.config.recipientId : '#' + job.config.channel} · ${job.sent} / ${job.config.limit}건` : '실행을 시작하면 여기에 표시됩니다.';
   $('channel-link').hidden = !job;
-  if (job) $('channel-link').href = `https://tlk.io/${encodeURIComponent(job.config.channel)}`;
+  if (job) {
+    $('channel-link').href = instagram ? 'https://www.instagram.com/direct/inbox/' : `https://tlk.io/${encodeURIComponent(job.config.channel)}`;
+    $('channel-link').textContent = instagram ? 'DM 열기 ↗' : '채널 열기 ↗';
+  }
   if (changed && job && activeStates.has(job.status)) {
-    for (const [id, key] of [['channel', 'channel'], ['bot-count', 'botCount'], ['prefix', 'prefix'], ['message', 'message'], ['interval', 'interval'], ['limit', 'limit']]) $(id).value = job.config[key];
-    updateSummary();
+    $('platform').value = job.config.platform || 'tlk';
+    const fields = instagram ? [['ig-account', 'accountId'], ['ig-recipient', 'recipientId']] : [['channel', 'channel'], ['bot-count', 'botCount'], ['prefix', 'prefix']];
+    for (const [id, key] of [...fields, ['message', 'message'], ['interval', 'interval'], ['limit', 'limit']]) $(id).value = job.config[key];
+    $('ig-token').value = '';
+    updatePlatform();
   }
   $('bots').replaceChildren(...(job?.bots || []).map(bot => { const element = document.createElement('span'); element.className = 'bot-chip'; element.textContent = `${bot.name} · ${bot.sent}건`; return element; }));
   const signature = `${job?.id}:${job?.logs?.at(-1)?.id}`;
@@ -164,8 +192,8 @@ $('download-log').onclick = () => {
   if (!job) return;
   const contents = job.logs.map(entry => `${entry.at} [${entry.level}] ${entry.text}`).join('\n');
   const url = URL.createObjectURL(new Blob([contents], { type: 'text/plain;charset=utf-8' }));
-  const link = document.createElement('a'); link.href = url; link.download = `tlk-${job.config.channel}-${job.id.slice(0, 8)}.txt`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  const link = document.createElement('a'); link.href = url; link.download = `${job.config.platform || 'tlk'}-${job.config.channel}-${job.id.slice(0, 8)}.txt`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
-updateSummary();
+updatePlatform();
 serverUrl = $('server-url').value;
 poll();
