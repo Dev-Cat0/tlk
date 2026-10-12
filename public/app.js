@@ -11,7 +11,9 @@ let busy = false;
 let generation = 0;
 let logSignature = '';
 
-try { $('server-url').value = localStorage.getItem('tlk-server-url') || ''; } catch {}
+const defaultServerUrl = 'https://tlk-runner.onrender.com';
+$('server-url').value = defaultServerUrl;
+try { $('server-url').value = localStorage.getItem('tlk-server-url') || defaultServerUrl; } catch {}
 
 function showError(id, error) { $(id).textContent = error?.message || ''; $(id).hidden = !error; }
 function openSettings() { if (!$('settings').open) $('settings').showModal(); }
