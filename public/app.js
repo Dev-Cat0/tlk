@@ -10,66 +10,6 @@ let busy = false;
 let generation = 0;
 let logSignature = '';
 
-function selectService(service) {
-  const manual = service === 'hands';
-  $('hands-workspace').hidden = !manual;
-  $('tlk-workspace').hidden = manual;
-  $('tlk-mode').setAttribute('aria-pressed', String(!manual));
-  $('hands-mode').setAttribute('aria-pressed', String(manual));
-  document.querySelector('.subtitle').textContent = manual
-    ? '방을 열고 직접 인증한 뒤, 작성한 메시지를 복사해서 보내세요.'
-    : '채널을 정하고, 메시지를 쓰고, 나머지는 봇에게 맡기세요.';
-}
-$('tlk-mode').onclick = () => selectService('tlk');
-$('hands-mode').onclick = () => selectService('hands');
-
-function handsRoomUrl(value) {
-  let code = value.trim();
-  if (/^https:\/\//i.test(code)) {
-    const url = new URL(code);
-    if (url.hostname !== 'handsfriend.com' || url.port || url.username || url.password || url.search || url.hash) throw new Error('핸즈프렌즈 방 주소를 입력하세요.');
-    const match = url.pathname.match(/^\/start\/room\/([^/]+)\/?$/);
-    if (!match) throw new Error('주소는 https://handsfriend.com/start/room/방코드 형식이어야 합니다.');
-    code = decodeURIComponent(match[1]);
-  }
-  if (!/^[a-zA-Z0-9_-]{1,160}$/.test(code)) throw new Error('올바른 방 링크 또는 영문·숫자·-·_로 된 방 코드를 입력하세요.');
-  return `https://handsfriend.com/start/room/${encodeURIComponent(code)}`;
-}
-function updateHandsRoom(reportError = false) {
-  showError('hands-room-error', null);
-  try {
-    $('hands-open').href = handsRoomUrl($('hands-room').value);
-    $('hands-open').setAttribute('aria-disabled', 'false');
-    return true;
-  } catch (error) {
-    $('hands-open').removeAttribute('href');
-    $('hands-open').setAttribute('aria-disabled', 'true');
-    if (reportError) showError('hands-room-error', error);
-    return false;
-  }
-}
-$('hands-room').addEventListener('input', () => updateHandsRoom());
-$('hands-room').addEventListener('blur', () => updateHandsRoom(Boolean($('hands-room').value.trim())));
-$('hands-room').addEventListener('keydown', event => {
-  if (event.key === 'Enter') { event.preventDefault(); if (updateHandsRoom(true)) $('hands-open').click(); }
-});
-$('hands-open').onclick = event => { if (!updateHandsRoom(true)) event.preventDefault(); };
-$('hands-message').addEventListener('input', () => {
-  $('hands-char-count').textContent = `${$('hands-message').value.length.toLocaleString('ko-KR')}자`;
-  $('hands-copy-status').textContent = '';
-});
-$('hands-copy').onclick = async () => {
-  const message = $('hands-message').value;
-  if (!message.trim()) { $('hands-copy-status').textContent = '복사할 메시지를 먼저 입력하세요.'; $('hands-message').focus(); return; }
-  try {
-    await navigator.clipboard.writeText(message);
-    $('hands-copy-status').textContent = '복사했습니다. 열린 방에 붙여넣고 직접 전송하세요.';
-  } catch {
-    $('hands-message').focus(); $('hands-message').select();
-    $('hands-copy-status').textContent = '클립보드 접근이 허용되지 않았습니다. 선택한 메시지를 Ctrl+C 또는 길게 눌러 복사하세요.';
-  }
-};
-
 const defaultServerUrl = 'https://tlk-runner.onrender.com';
 $('server-url').value = defaultServerUrl;
 try { $('server-url').value = localStorage.getItem('tlk-server-url') || defaultServerUrl; } catch {}
@@ -89,7 +29,6 @@ function connectionState(ok) {
 }
 function updateControls() {
   const active = job && activeStates.has(job.status);
-  $('hands-tlk-active').hidden = !active;
   $('config-fields').disabled = Boolean(active) || busy;
   $('start').disabled = Boolean(active) || busy;
   $('stop').disabled = !connected || !active || job.status === 'stopping' || busy;
@@ -228,6 +167,5 @@ $('download-log').onclick = () => {
   const link = document.createElement('a'); link.href = url; link.download = `tlk-${job.config.channel}-${job.id.slice(0, 8)}.txt`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
 updateSummary();
-if (location.hash === '#hands') selectService('hands');
 serverUrl = $('server-url').value;
 poll();

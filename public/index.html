@@ -4,11 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#111411">
-  <meta name="description" content="tlk.io 자동 전송과 핸즈프렌즈 방채팅 수동 전송을 한곳에서 준비하세요.">
+  <meta name="description" content="tlk.io 채널의 자동 메시지를 설정하고 실행 상태를 확인하세요.">
   <title>tlk control — 메시지 자동화</title>
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="./style.css?v=hands-manual-1">
-  <script type="module" src="./app.js?v=hands-manual-1"></script>
+  <link rel="stylesheet" href="./style.css?v=tlk-only-1">
+  <script type="module" src="./app.js?v=tlk-only-1"></script>
 </head>
 <body>
   <header class="topbar">
@@ -17,31 +17,6 @@
   </header>
   <main>
     <section class="heading"><div><p class="eyebrow"><span></span> YOUR CHANNEL, ON AUTOPILOT</p><h1>메시지를 보내는<br>가장 간단한 루틴<span class="accent">.</span></h1><p class="subtitle">채널을 정하고, 메시지를 쓰고, 나머지는 봇에게 맡기세요.</p></div><div class="hero-mark" aria-hidden="true"><span class="orbit one"></span><span class="orbit two"></span><div class="bot-symbol">: <span>)</span></div><span class="small-tag">READY WHEN YOU ARE</span></div></section>
-    <nav class="service-switch" aria-label="채팅 서비스 선택">
-      <button id="tlk-mode" type="button" aria-pressed="true" aria-controls="tlk-workspace">tlk.io <span>자동 전송</span></button>
-      <button id="hands-mode" type="button" aria-pressed="false" aria-controls="hands-workspace">핸즈프렌즈 <span>수동 전송</span></button>
-    </nav>
-    <section id="hands-workspace" class="manual-workspace" aria-labelledby="hands-title" hidden>
-      <div class="panel setup-panel">
-        <div class="panel-heading"><div><span class="section-index">01</span><h2 id="hands-title">핸즈프렌즈 방채팅</h2></div><span class="pill">수동 모드</span></div>
-        <label for="hands-room">방 주소 또는 방 코드</label>
-        <input id="hands-room" placeholder="https://handsfriend.com/start/room/방코드" autocomplete="off" spellcheck="false" aria-describedby="hands-room-help">
-        <p id="hands-room-help" class="field-help">참여할 방의 링크나 마지막 방 코드를 입력하세요.</p>
-        <p id="hands-room-error" class="error-message" role="alert" hidden></p>
-        <a id="hands-open" class="button secondary manual-open" target="_blank" rel="noopener noreferrer" aria-disabled="true">방 열기 ↗</a>
-        <div class="label-row"><label for="hands-message">직접 보낼 메시지</label><span id="hands-char-count">0자</span></div>
-        <textarea id="hands-message" rows="6" placeholder="메시지를 작성하고 복사한 뒤, 열린 방에서 붙여넣어 보내세요."></textarea>
-        <button id="hands-copy" type="button" class="button primary manual-copy">메시지 복사</button>
-        <p id="hands-copy-status" class="field-help" role="status" aria-live="polite"></p>
-      </div>
-      <aside class="panel manual-guide" aria-labelledby="hands-guide-title">
-        <p class="eyebrow">IN YOUR BROWSER</p><h2 id="hands-guide-title">직접 확인하고 보내세요.</h2>
-        <ol><li><strong>방을 여세요.</strong><p>입력한 핸즈프렌즈 방이 새 탭으로 열립니다.</p></li><li><strong>입장과 인증을 완료하세요.</strong><p>핸즈프렌즈 화면에서 닉네임과 이용 안내를 확인하고, 보안 인증이 나오면 직접 진행하세요.</p></li><li><strong>메시지를 붙여넣고 전송하세요.</strong><p>여기에서 복사한 메시지를 방의 입력창에 붙여넣고 직접 전송 버튼을 누르세요.</p></li></ol>
-        <div class="manual-note">서버 연결 없이 사용할 수 있습니다. 이 화면에서는 봇 입장·반복 전송을 실행하지 않으며, 실제 입장이나 전송 여부는 열린 방에서 확인하세요.</div>
-        <p id="hands-tlk-active" class="stale-note" hidden>tlk.io 자동 전송이 실행 중입니다. tlk.io 탭에서 상태를 확인하거나 중지할 수 있습니다.</p>
-      </aside>
-    </section>
-    <div id="tlk-workspace">
     <div class="workspace">
       <section class="panel setup-panel" aria-labelledby="setup-title">
         <div class="panel-heading"><div><span class="section-index">01</span><h2 id="setup-title">자동 전송 설정</h2></div><span class="subtle">CONFIGURATION</span></div>
@@ -73,8 +48,7 @@
       </div>
     </div>
     <section class="connection-guide"><div class="guide-icon">↗</div><div><h3>처음 사용하나요?</h3><p>실행기 서버를 연결하면 준비 완료. GitHub Pages는 화면을, 서버는 전송을 담당합니다.</p></div><button id="guide-open" class="button secondary">서버 연결하기 <span>→</span></button></section>
-    </div>
-    <footer><span>tlk control <span class="footer-divider">/</span> Small tool. Steady conversations.</span><span>비공식 도구 · tlk.io 자동 전송 / 핸즈프렌즈 수동 전송</span></footer>
+    <footer><span>tlk control <span class="footer-divider">/</span> Small tool. Steady conversations.</span><span>tlk.io 비공식 도구 · 실행 기록은 서버 재시작 시 초기화됩니다.</span></footer>
   </main>
   <dialog id="settings" aria-labelledby="settings-title">
     <div class="dialog-heading"><div><p class="eyebrow">CONNECT YOUR RUNNER</p><h2 id="settings-title">서버 연결</h2></div><button id="settings-close" class="icon-button" aria-label="닫기">×</button></div>
