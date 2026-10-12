@@ -2,7 +2,6 @@ const $ = id => document.getElementById(id);
 const activeStates = new Set(['starting', 'running', 'stopping']);
 const labels = { starting: '연결 중', running: '전송 중', stopping: '중지 중', stopped: '중지됨', failed: '오류', completed: '완료' };
 let serverUrl = '';
-let serverKey = '';
 let job = null;
 let connected = false;
 let pollTimer;
@@ -41,15 +40,15 @@ function readConfig() {
 function updateSummary() {
   const config = readConfig();
   $('char-count').textContent = `${$('message').value.length.toLocaleString('ko-KR')} / 1,000`;
-  $('summary').textContent = `봇 ${config.botCount || '—'}개가 ${config.interval || '—'}초 간격으로 총 ${config.limit || '—'}건 전송`;
+  $('summary').textContent = `봇 ${config.botCount || '—'}개가 ${$('interval').value === '' ? '—' : config.interval}초 간격으로 총 ${config.limit || '—'}건 전송`;
 }
 $('run-form').addEventListener('input', updateSummary);
 document.querySelectorAll('[data-step]').forEach(button => { button.onclick = () => { $('bot-count').value = Math.min(5, Math.max(1, Number($('bot-count').value) + Number(button.dataset.step))); updateSummary(); }; });
 
-async function request(path, { method = 'GET', body, url = serverUrl, key = serverKey, timeout = 20000 } = {}) {
+async function request(path, { method = 'GET', body, url = serverUrl, timeout = 20000 } = {}) {
   let response;
   try {
-    response = await fetch(`${url}${path}`, { method, mode: 'cors', credentials: 'omit', cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(timeout), headers: { Authorization: `Bearer ${key}`, ...(body ? { 'Content-Type': 'application/json' } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
+    response = await fetch(`${url}${path}`, { method, mode: 'cors', credentials: 'omit', cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(timeout), headers: body ? { 'Content-Type': 'application/json' } : {}, ...(body ? { body: JSON.stringify(body) } : {}) });
   } catch {
     throw new Error('서버에 연결할 수 없습니다. 주소·서버 상태·허용 도메인을 확인하세요. Render 무료 서버가 잠들었다면 잠시 후 다시 연결하세요.');
   }
@@ -72,11 +71,9 @@ $('connection-form').addEventListener('submit', async event => {
   $('connect').disabled = true;
   $('connect').textContent = '서버 응답 기다리는 중…';
   try {
-    const key = $('server-key').value.trim();
-    const result = await request('/api/status', { url: url.origin, key, timeout: 65000 });
+    const result = await request('/api/status', { url: url.origin, timeout: 65000 });
     generation++;
     serverUrl = url.origin;
-    serverKey = key;
     try { localStorage.setItem('tlk-server-url', serverUrl); } catch {}
     connectionState(true);
     render(result.job);
@@ -170,3 +167,5 @@ $('download-log').onclick = () => {
   const link = document.createElement('a'); link.href = url; link.download = `tlk-${job.config.channel}-${job.id.slice(0, 8)}.txt`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
 updateSummary();
+serverUrl = $('server-url').value;
+poll();

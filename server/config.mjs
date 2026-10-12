@@ -14,8 +14,10 @@ export function validateConfig(input) {
     return value;
   };
   const botCount = integer('botCount', 1, 5, '봇 수');
-  const interval = integer('interval', 5, 3600, '전송 간격(초)');
-  const limit = integer('limit', 1, 1000, '총 전송 수');
+  const interval = input.interval;
+  if (typeof interval !== 'number' || !Number.isFinite(interval) || interval < 0 || interval > 3600) throw new Error('전송 간격은 0~3600초 사이의 숫자로 입력하세요. 소수도 사용할 수 있습니다.');
+  const limit = input.limit;
+  if (!Number.isSafeInteger(limit) || limit < 1) throw new Error('총 전송 수는 1 이상의 안전한 정수로 입력하세요.');
   const message = String(input.message ?? '').trim();
   const prefix = String(input.prefix ?? 'notice-bot').trim();
   if (!message || message.length > 1000) throw new Error('메시지는 1~1,000자 입력하세요.');

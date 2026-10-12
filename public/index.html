@@ -25,7 +25,7 @@
             <label for="channel">어느 채널로 보낼까요?</label><div class="input-prefix"><span>tlk.io /</span><input id="channel" name="channel" placeholder="my-channel" maxlength="100" required autocomplete="off" spellcheck="false"></div>
             <div class="field-row"><div><label for="bot-count">봇 수</label><div class="stepper"><button type="button" data-step="-1" aria-label="봇 수 줄이기">−</button><input id="bot-count" name="botCount" type="number" min="1" max="5" value="1" required><span>개</span><button type="button" data-step="1" aria-label="봇 수 늘리기">+</button></div></div><div><label for="prefix">봇 이름</label><input id="prefix" name="prefix" value="notice-bot" maxlength="20" required spellcheck="false"></div></div>
             <div class="label-row"><label for="message">보낼 메시지</label><span id="char-count">0 / 1,000</span></div><textarea id="message" name="message" rows="5" maxlength="1000" placeholder="채널에 보낼 메시지를 입력하세요." required></textarea>
-            <div class="field-row"><div><label for="interval">전송 간격</label><div class="input-suffix"><input id="interval" name="interval" type="number" min="5" max="3600" value="30" required><span>초마다</span></div></div><div><label for="limit">총 전송 수</label><div class="input-suffix"><input id="limit" name="limit" type="number" min="1" max="1000" value="10" required><span>건 후 종료</span></div></div>
+            <div class="field-row"><div><label for="interval">전송 간격</label><div class="input-suffix"><input id="interval" name="interval" type="number" min="0" max="3600" step="any" value="30" required><span>초마다</span></div></div><div><label for="limit">총 전송 수</label><div class="input-suffix"><input id="limit" name="limit" type="number" min="1" step="1" value="10" required><span>건 후 종료</span></div></div>
             <p class="field-help">봇들이 순서대로 한 건씩 보냅니다. 첫 메시지는 연결 직후 전송됩니다.</p>
           </fieldset>
           <div class="run-summary"><span class="summary-icon">↻</span><p id="summary">봇 1개가 30초 간격으로 총 10건 전송</p></div>
@@ -52,9 +52,9 @@
   </main>
   <dialog id="settings" aria-labelledby="settings-title">
     <div class="dialog-heading"><div><p class="eyebrow">CONNECT YOUR RUNNER</p><h2 id="settings-title">서버 연결</h2></div><button id="settings-close" class="icon-button" aria-label="닫기">×</button></div>
-    <p class="dialog-intro">실행기 서버 주소와 관리자 키를 입력하세요.</p>
-    <form id="connection-form"><label for="server-url">서버 주소</label><input id="server-url" type="url" placeholder="https://tlk-runner-xxxx.onrender.com" required autocomplete="url"><label for="server-key">관리자 키</label><input id="server-key" type="password" placeholder="서버의 ADMIN_TOKEN 값" required minlength="32" autocomplete="off"><p class="field-help">키는 이 페이지 메모리에만 보관되며 새로고침하면 지워집니다.</p><p id="connection-error" class="error-message" role="alert" hidden></p><button id="connect" class="button primary" type="submit">서버 연결 확인 →</button></form>
-    <details class="deploy-guide"><summary>서버가 없다면? Render에서 시작하기</summary><ol><li>아래 버튼으로 Render 무료 서버를 만드세요.</li><li>Render의 Environment에서 <code>ADMIN_TOKEN</code> 값을 복사하세요.</li><li>배포된 서버 주소와 키를 위에 입력하세요.</li></ol><a class="button secondary" href="https://render.com/deploy?repo=https%3A%2F%2Fgithub.com%2FDev-Cat0%2Ftlk" target="_blank" rel="noopener noreferrer">Render에 실행기 배포 ↗</a><p>무료 서버는 15분 동안 외부 요청이 없으면 잠듭니다. 잠자기·재시작·재배포 시 실행이 종료됩니다. 한 번의 실행은 최대 6시간입니다.</p></details>
+    <p class="dialog-intro">서버 주소만 입력하면 연결됩니다. 관리자 키는 필요하지 않습니다.</p>
+    <form id="connection-form"><label for="server-url">서버 주소</label><input id="server-url" type="url" placeholder="https://tlk-runner-xxxx.onrender.com" required autocomplete="url"><p class="field-help">기본 서버에 자동으로 연결됩니다. 다른 실행기를 쓰려면 주소를 변경하세요.</p><p id="connection-error" class="error-message" role="alert" hidden></p><button id="connect" class="button primary" type="submit">서버 연결 확인 →</button></form>
+    <details class="deploy-guide"><summary>서버가 없다면? Render에서 시작하기</summary><ol><li>아래 버튼으로 Render 무료 서버를 만드세요.</li><li>Render에서 배포된 서버 주소를 복사하세요.</li><li>서버 주소를 위에 입력하고 연결하세요.</li></ol><a class="button secondary" href="https://render.com/deploy?repo=https%3A%2F%2Fgithub.com%2FDev-Cat0%2Ftlk" target="_blank" rel="noopener noreferrer">Render에 실행기 배포 ↗</a><p>무료 서버는 15분 동안 외부 요청이 없으면 잠듭니다. 잠자기·재시작·재배포 시 실행이 종료됩니다. 한 번의 실행은 최대 6시간입니다.</p></details>
   </dialog>
   <noscript>이 사이트를 사용하려면 브라우저에서 JavaScript를 활성화하세요.</noscript>
 </body>

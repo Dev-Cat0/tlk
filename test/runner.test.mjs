@@ -7,9 +7,22 @@ import { TlkSession, parseChannel } from '../server/tlk.mjs';
 const config = { channel: 'my-room', botCount: 2, prefix: 'notice-bot', interval: 5, limit: 4, message: '안녕하세요' };
 const html = '<meta name="csrf-token" content="test-csrf"><script>Talkio.Variables.chat_id = \'123\'; var settings = {"allow_anonymous":true};</script>';
 
-test('configuration accepts tlk URLs and rejects unsafe or unbounded inputs', () => {
+test('configuration accepts tlk URLs and rejects invalid inputs', () => {
   assert.equal(validateConfig({ ...config, channel: 'https://tlk.io/my-room/' }).channel, 'my-room');
-  for (const patch of [{ channel: 'https://evil.test/room' }, { channel: 'https://tlk.io/room?x=1' }, { channel: '../admin' }, { channel: 'a/b' }, { botCount: 0 }, { botCount: 6 }, { interval: 0 }, { interval: 5.5 }, { limit: 1001 }, { message: '  ' }, { message: 'x'.repeat(1001) }, { prefix: '<script>' }]) assert.throws(() => validateConfig({ ...config, ...patch }));
+  for (const patch of [{ channel: 'https://evil.test/room' }, { channel: 'https://tlk.io/room?x=1' }, { channel: '../admin' }, { channel: 'a/b' }, { botCount: 0 }, { botCount: 6 }, { interval: -1 }, { interval: Infinity }, { interval: NaN }, { limit: 0 }, { limit: 1.5 }, { limit: Number.MAX_SAFE_INTEGER + 1 }, { message: '  ' }, { message: 'x'.repeat(1001) }, { prefix: '<script>' }]) assert.throws(() => validateConfig({ ...config, ...patch }));
+});
+test('intervals below five seconds and counts above one thousand are accepted', async () => {
+  assert.equal(validateConfig({ ...config, interval: 0 }).interval, 0);
+  assert.equal(validateConfig({ ...config, interval: 0.25, limit: 100000 }).limit, 100000);
+  const waits = [];
+  const runner = new Runner({ makeSession: () => ({ join: async () => {}, send: async () => 'mock', close: () => {} }), sleep: async ms => { waits.push(ms); } });
+  runner.start({ ...config, interval: 0.25, limit: 1001 });
+  await runner.pending;
+  assert.equal(runner.snapshot().sent, 1001);
+  assert.equal(runner.snapshot().status, 'completed');
+  assert.equal(waits.length, 1000);
+  assert.ok(waits.every(ms => ms === 250));
+  assert.equal(runner.snapshot().logs.length, 200);
 });
 test('runner joins separate sessions, rotates bots, spaces messages, and finishes at limit', async () => {
   const sent = [], joined = [], waits = [], closed = [];
