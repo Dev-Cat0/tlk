@@ -8,7 +8,7 @@
   <title>tlk control — 메시지 자동화</title>
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="./style.css?v=tlk-only-1">
-  <script type="module" src="./app.js?v=tlk-only-1"></script>
+  <script type="module" src="./app.js?v=independent-bots-2"></script>
 </head>
 <body>
   <header class="topbar">
@@ -26,9 +26,9 @@
             <div class="field-row"><div><label for="bot-count">봇 수</label><div class="stepper"><button type="button" data-step="-1" aria-label="봇 수 줄이기">−</button><input id="bot-count" name="botCount" type="number" min="1" max="5" value="1" required><span>개</span><button type="button" data-step="1" aria-label="봇 수 늘리기">+</button></div></div><div><label for="prefix">봇 이름</label><input id="prefix" name="prefix" value="notice-bot" maxlength="20" required spellcheck="false"></div></div>
             <div class="label-row"><label for="message">보낼 메시지</label><span id="char-count">0 / 1,000</span></div><textarea id="message" name="message" rows="5" maxlength="1000" placeholder="채널에 보낼 메시지를 입력하세요." required></textarea>
             <div class="field-row"><div><label for="interval">전송 간격</label><div class="input-suffix"><input id="interval" name="interval" type="number" min="0" max="3600" step="any" value="30" required><span>초마다</span></div></div><div><label for="limit">총 전송 수</label><div class="input-suffix"><input id="limit" name="limit" type="number" min="1" step="1" value="10" required><span>건 후 종료</span></div></div>
-            <p class="field-help">봇들이 순서대로 한 건씩 보냅니다. 첫 메시지는 연결 직후 전송됩니다.</p>
+            <p class="field-help">각 봇이 설정한 간격마다 독립적으로 보냅니다. 첫 메시지는 연결 완료 후 바로 전송되며, 총 전송 수는 모든 봇의 합계입니다.</p>
           </fieldset>
-          <div class="run-summary"><span class="summary-icon">↻</span><p id="summary">봇 1개가 30초 간격으로 총 10건 전송</p></div>
+          <div class="run-summary"><span class="summary-icon">↻</span><p id="summary">봇 1개가 각각 30초 간격으로 합계 10건 전송</p></div>
           <div id="form-error" class="error-message" role="alert" hidden></div>
           <button id="start" class="button primary" type="submit"><span>▶</span> 자동 전송 시작</button>
           <p class="form-note">운영하거나 자동 전송이 허용된 채널에서 사용하세요.</p>

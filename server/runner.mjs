@@ -4,9 +4,10 @@ import { TlkSession } from './tlk.mjs';
 import { validateConfig } from './config.mjs';
 
 export class Runner {
-  constructor({ makeSession = () => new TlkSession(), sleep = (ms, signal) => delay(ms, undefined, { signal }), maxDuration = 6 * 3600_000 } = {}) {
+  constructor({ makeSession = () => new TlkSession(), sleep = (ms, signal) => delay(ms, undefined, { signal }), now = Date.now, maxDuration = 6 * 3600_000 } = {}) {
     this.makeSession = makeSession;
     this.sleep = sleep;
+    this.now = now;
     this.maxDuration = maxDuration;
     this.job = null;
     this.pending = null;
@@ -51,20 +52,49 @@ export class Runner {
         this.log('info', `${name} 참가 완료`);
       }
       this.job.status = 'running';
-      for (let i = 0; i < config.limit; i++) {
-        signal.throwIfAborted();
-        const index = i % sessions.length;
-        this.job.nextAt = null;
-        const id = await sessions[index].send(config.message, signal);
-        this.job.sent++;
-        this.job.bots[index].sent++;
-        this.log('success', `${this.job.bots[index].name} · 전송 완료 #${id}`);
-        signal.throwIfAborted();
-        if (i + 1 < config.limit) {
-          this.job.nextAt = new Date(Date.now() + config.interval * 1000).toISOString();
-          await this.sleep(config.interval * 1000, signal);
+      const workers = new AbortController();
+      const workerSignal = AbortSignal.any([signal, workers.signal]);
+      const nextTimes = new Map();
+      const updateNextAt = () => {
+        this.job.nextAt = nextTimes.size ? new Date(Math.min(...nextTimes.values())).toISOString() : null;
+      };
+      let reserved = 0;
+      let failure;
+      await Promise.allSettled(sessions.map(async (session, index) => {
+        let nextAt = null;
+        try {
+          while (reserved < config.limit) {
+            workerSignal.throwIfAborted();
+            // Reserve before awaiting so concurrent bots cannot exceed the shared limit.
+            reserved++;
+            if (nextAt !== null) {
+              nextTimes.set(index, nextAt);
+              updateNextAt();
+              await this.sleep(Math.max(0, nextAt - this.now()), workerSignal);
+              nextTimes.delete(index);
+              updateNextAt();
+            }
+            workerSignal.throwIfAborted();
+            // Measure each bot's interval from its own previous request start.
+            // A slow request never overlaps another request from the same bot.
+            nextAt = this.now() + config.interval * 1000;
+            const id = await session.send(config.message, workerSignal);
+            this.job.sent++;
+            this.job.bots[index].sent++;
+            this.log('success', `${this.job.bots[index].name} · 전송 완료 #${id}`);
+          }
+        } catch (error) {
+          if (!workerSignal.aborted) {
+            failure = error;
+            workers.abort();
+          }
+        } finally {
+          nextTimes.delete(index);
+          updateNextAt();
         }
-      }
+      }));
+      if (failure) throw failure;
+      signal.throwIfAborted();
       this.job.status = 'completed';
       this.log('success', `총 ${this.job.sent}건 전송을 완료했습니다.`);
     } catch (error) {

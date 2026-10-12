@@ -40,7 +40,7 @@ function readConfig() {
 function updateSummary() {
   const config = readConfig();
   $('char-count').textContent = `${$('message').value.length.toLocaleString('ko-KR')} / 1,000`;
-  $('summary').textContent = `봇 ${config.botCount || '—'}개가 ${$('interval').value === '' ? '—' : config.interval}초 간격으로 총 ${config.limit || '—'}건 전송`;
+  $('summary').textContent = `봇 ${config.botCount || '—'}개가 각각 ${$('interval').value === '' ? '—' : config.interval}초 간격으로 합계 ${config.limit || '—'}건 전송`;
 }
 $('run-form').addEventListener('input', updateSummary);
 document.querySelectorAll('[data-step]').forEach(button => { button.onclick = () => { $('bot-count').value = Math.min(5, Math.max(1, Number($('bot-count').value) + Number(button.dataset.step))); updateSummary(); }; });
