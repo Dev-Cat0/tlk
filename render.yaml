@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: tlk-runner
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: ADMIN_TOKEN
+        generateValue: true
+      - key: ALLOWED_ORIGINS
+        value: https://dev-cat0.github.io
