@@ -58,7 +58,9 @@ export class Runner {
       const workerSignal = AbortSignal.any([signal, workers.signal]);
       const nextTimes = new Map();
       const updateNextAt = () => {
-        this.job.nextAt = nextTimes.size ? new Date(Math.min(...nextTimes.values())).toISOString() : null;
+        let earliest = Infinity;
+        for (const time of nextTimes.values()) earliest = Math.min(earliest, time);
+        this.job.nextAt = nextTimes.size ? new Date(earliest).toISOString() : null;
       };
       let reserved = 0;
       let failure;

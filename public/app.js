@@ -1,3 +1,5 @@
+import { decimalText, readNumericInput } from './numbers.mjs';
+
 const $ = id => document.getElementById(id);
 const activeStates = new Set(['starting', 'running', 'stopping']);
 const labels = { starting: '연결 중', running: '전송 중', stopping: '중지 중', stopped: '중지됨', failed: '오류', completed: '완료' };
@@ -54,12 +56,32 @@ function updatePlatform() {
 function updateSummary() {
   const config = readConfig();
   $('char-count').textContent = `${$('message').value.length.toLocaleString('ko-KR')} / 1,000`;
-  const sender = config.platform === 'instagram' ? 'Instagram 계정 1개가' : `봇 ${config.botCount || '—'}개가 각각`;
-  $('summary').textContent = `${sender} ${$('interval').value === '' ? '—' : config.interval}초 간격으로 합계 ${config.limit || '—'}건 전송`;
+  const display = id => $(id).validity.valid ? decimalText($(id).value) : '—';
+  const sender = config.platform === 'instagram' ? 'Instagram 계정 1개가' : `봇 ${display('bot-count')}개가 각각`;
+  $('summary').textContent = `${sender} ${display('interval')}초 간격으로 합계 ${display('limit')}건 전송`;
+}
+function validateNumber(id, normalize = false) {
+  const input = $(id);
+  try {
+    readNumericInput(input.value, id === 'interval' ? 'interval' : 'count');
+    input.setCustomValidity('');
+    if (normalize) input.value = decimalText(input.value.trim());
+  } catch (error) { input.setCustomValidity(error.message); }
+}
+for (const id of ['bot-count', 'interval', 'limit']) {
+  $(id).addEventListener('input', () => validateNumber(id));
+  $(id).addEventListener('change', () => { validateNumber(id, true); updateSummary(); });
+  $(id).addEventListener('blur', () => { validateNumber(id, true); updateSummary(); });
+  validateNumber(id);
 }
 $('platform').addEventListener('change', updatePlatform);
 $('run-form').addEventListener('input', updateSummary);
-document.querySelectorAll('[data-step]').forEach(button => { button.onclick = () => { $('bot-count').value = Math.min(5, Math.max(1, Number($('bot-count').value) + Number(button.dataset.step))); updateSummary(); }; });
+document.querySelectorAll('[data-step]').forEach(button => { button.onclick = () => {
+  const current = Number($('bot-count').value);
+  $('bot-count').value = decimalText(Math.min(Number.MAX_SAFE_INTEGER, Math.max(1, (Number.isSafeInteger(current) ? current : 1) + Number(button.dataset.step))));
+  validateNumber('bot-count');
+  updateSummary();
+}; });
 
 async function request(path, { method = 'GET', body, url = serverUrl, timeout = 20000 } = {}) {
   let response;
@@ -158,7 +180,8 @@ function render(nextJob) {
   if (changed && job && activeStates.has(job.status)) {
     $('platform').value = job.config.platform || 'tlk';
     const fields = instagram ? [['ig-account', 'accountId'], ['ig-recipient', 'recipientId']] : [['channel', 'channel'], ['bot-count', 'botCount'], ['prefix', 'prefix']];
-    for (const [id, key] of [...fields, ['message', 'message'], ['interval', 'interval'], ['limit', 'limit']]) $(id).value = job.config[key];
+    for (const [id, key] of [...fields, ['message', 'message'], ['interval', 'interval'], ['limit', 'limit']]) $(id).value = typeof job.config[key] === 'number' ? decimalText(job.config[key]) : job.config[key];
+    for (const id of ['bot-count', 'interval', 'limit']) validateNumber(id);
     $('ig-token').value = '';
     updatePlatform();
   }

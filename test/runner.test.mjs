@@ -9,7 +9,7 @@ const html = '<meta name="csrf-token" content="test-csrf"><script>Talkio.Variabl
 
 test('configuration accepts tlk URLs and rejects invalid inputs', () => {
   assert.equal(validateConfig({ ...config, channel: 'https://tlk.io/my-room/' }).channel, 'my-room');
-  for (const patch of [{ channel: 'https://evil.test/room' }, { channel: 'https://tlk.io/room?x=1' }, { channel: '../admin' }, { channel: 'a/b' }, { botCount: 0 }, { botCount: 6 }, { interval: -1 }, { interval: Infinity }, { interval: NaN }, { limit: 0 }, { limit: 1.5 }, { limit: Number.MAX_SAFE_INTEGER + 1 }, { message: '  ' }, { message: 'x'.repeat(1001) }, { prefix: '<script>' }]) assert.throws(() => validateConfig({ ...config, ...patch }));
+  for (const patch of [{ channel: 'https://evil.test/room' }, { channel: 'https://tlk.io/room?x=1' }, { channel: '../admin' }, { channel: 'a/b' }, { botCount: 0 }, { botCount: 1.5 }, { botCount: Infinity }, { botCount: Number.MAX_SAFE_INTEGER + 1 }, { interval: -1 }, { interval: Infinity }, { interval: NaN }, { limit: 0 }, { limit: 1.5 }, { limit: Number.MAX_SAFE_INTEGER + 1 }, { message: '  ' }, { message: 'x'.repeat(1001) }, { prefix: '<script>' }]) assert.throws(() => validateConfig({ ...config, ...patch }));
 });
 test('intervals below five seconds and counts above one thousand are accepted', async () => {
   assert.equal(validateConfig({ ...config, interval: 0 }).interval, 0);
@@ -23,6 +23,26 @@ test('intervals below five seconds and counts above one thousand are accepted', 
   assert.equal(waits.length, 999);
   assert.ok(waits.every(ms => ms === 250));
   assert.equal(runner.snapshot().logs.length, 200);
+});
+
+test('more than five bots run with tiny intervals and respect the shared total', async () => {
+  const waits = [];
+  let joined = 0, sent = 0, closed = 0;
+  const runner = new Runner({
+    makeSession: () => ({ join: async () => { joined++; }, send: async () => ++sent, close: () => { closed++; } }),
+    now: () => 0,
+    sleep: async ms => { waits.push(ms); },
+  });
+  runner.start({ ...config, botCount: 25, interval: 0.0000001, limit: 53 });
+  await runner.pending;
+  assert.equal(joined, 25);
+  assert.equal(closed, 25);
+  assert.equal(sent, 53);
+  assert.equal(runner.snapshot().status, 'completed');
+  assert.equal(runner.snapshot().bots.reduce((sum, bot) => sum + bot.sent, 0), 53);
+  assert.equal(waits.length, 28);
+  assert.ok(waits.every(ms => ms === 0.0000001 * 1000));
+  assert.equal(validateConfig({ ...config, botCount: Number.MAX_SAFE_INTEGER }).botCount, Number.MAX_SAFE_INTEGER);
 });
 test('runner joins separate sessions, gives each bot its own interval, and finishes at limit', async () => {
   const sent = [], joined = [], waits = [], closed = [];

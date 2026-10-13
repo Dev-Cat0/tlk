@@ -8,7 +8,7 @@
   <title>tlk control — 메시지 자동화</title>
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="./style.css?v=instagram-1">
-  <script type="module" src="./app.js?v=instagram-1"></script>
+  <script type="module" src="./app.js?v=decimal-2"></script>
 </head>
 <body>
   <header class="topbar">
@@ -26,7 +26,7 @@
             <select id="platform" name="platform"><option value="tlk">tlk.io 채널</option><option value="instagram">Instagram DM</option></select>
             <fieldset id="tlk-fields" class="service-fields">
             <label for="channel">어느 채널로 보낼까요?</label><div class="input-prefix"><span>tlk.io /</span><input id="channel" name="channel" placeholder="my-channel" maxlength="100" required autocomplete="off" spellcheck="false"></div>
-            <div class="field-row"><div><label for="bot-count">봇 수</label><div class="stepper"><button type="button" data-step="-1" aria-label="봇 수 줄이기">−</button><input id="bot-count" name="botCount" type="number" min="1" max="5" value="1" required><span>개</span><button type="button" data-step="1" aria-label="봇 수 늘리기">+</button></div></div><div><label for="prefix">봇 이름</label><input id="prefix" name="prefix" value="notice-bot" maxlength="20" required spellcheck="false"></div></div>
+            <div class="field-row"><div><label for="bot-count">봇 수</label><div class="stepper"><button type="button" data-step="-1" aria-label="봇 수 줄이기">−</button><input id="bot-count" name="botCount" type="text" inputmode="numeric" value="1" required><span>개</span><button type="button" data-step="1" aria-label="봇 수 늘리기">+</button></div></div><div><label for="prefix">봇 이름</label><input id="prefix" name="prefix" value="notice-bot" maxlength="20" required spellcheck="false"></div></div>
             </fieldset>
             <fieldset id="instagram-fields" class="service-fields" hidden disabled>
               <div class="service-note"><strong>Instagram 프로페셔널 계정으로 보내기</strong><p>먼저 DM을 보낸 상대에게 마지막 메시지 수신 후 24시간 이내에 응답할 수 있습니다. 한 계정으로 전송하며, @사용자 이름 대신 받는 사람의 IGSID가 필요합니다.</p></div>
@@ -37,7 +37,7 @@
               <details class="instagram-guide"><summary>계정과 토큰 준비하기</summary><ol><li>Meta 앱에 Instagram API with Instagram Login을 설정하세요.</li><li>프로페셔널 계정으로 로그인하고 <code>instagram_business_basic</code>, <code>instagram_business_manage_messages</code> 권한을 부여하세요.</li><li>계정 ID와 액세스 토큰을 입력하세요. 받는 사람 ID는 수신 메시지 웹훅의 <code>sender.id</code> 또는 Conversations API에서 확인합니다.</li><li>개발 모드에서는 앱 역할·테스터 계정으로 확인하세요. 일반 사용자에게 제공하려면 필요한 앱 검토와 권한 승인을 완료하세요.</li></ol><a href="https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/messaging-api" target="_blank" rel="noopener noreferrer">Meta 메시지 API 설정 안내 ↗</a></details>
             </fieldset>
             <div class="label-row"><label for="message">보낼 메시지</label><span id="char-count">0 / 1,000</span></div><textarea id="message" name="message" rows="5" maxlength="1000" placeholder="채널에 보낼 메시지를 입력하세요." required></textarea>
-            <div class="field-row"><div><label for="interval">전송 간격</label><div class="input-suffix"><input id="interval" name="interval" type="number" min="0" max="3600" step="any" value="30" required><span>초마다</span></div></div><div><label for="limit">총 전송 수</label><div class="input-suffix"><input id="limit" name="limit" type="number" min="1" step="1" value="10" required><span>건 후 종료</span></div></div>
+            <div class="field-row"><div><label for="interval">전송 간격</label><div class="input-suffix"><input id="interval" name="interval" type="text" inputmode="decimal" value="30" required><span>초마다</span></div></div><div><label for="limit">총 전송 수</label><div class="input-suffix"><input id="limit" name="limit" type="text" inputmode="numeric" value="10" required><span>건 후 종료</span></div></div>
             <p id="schedule-help" class="field-help">각 봇이 설정한 간격마다 독립적으로 보냅니다. 첫 메시지는 연결 완료 후 바로 전송되며, 총 전송 수는 모든 봇의 합계입니다.</p>
           </fieldset>
           <div class="run-summary"><span class="summary-icon">↻</span><p id="summary">봇 1개가 각각 30초 간격으로 합계 10건 전송</p></div>
