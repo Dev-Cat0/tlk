@@ -3,10 +3,15 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "start": "node server/index.mjs",
     "test": "node --test",
     "preview": "node scripts/preview.mjs"
+  },
+  "dependencies": {
+    "playwright": "1.64.1"
   }
 }

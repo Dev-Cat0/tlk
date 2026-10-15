@@ -8,7 +8,7 @@
   <title>tlk control — 메시지 자동화</title>
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="./style.css?v=padlet-1">
-  <script type="module" src="./app.js?v=padlet-1"></script>
+  <script type="module" src="./app.js?v=padlet-guest-2"></script>
 </head>
 <body>
   <header class="topbar">
@@ -26,17 +26,15 @@
             <select id="platform" name="platform"><option value="tlk">tlk.io 채널</option><option value="padlet">패들렛 게시물</option></select>
             <fieldset id="tlk-fields" class="service-fields">
             <label for="channel">어느 채널로 보낼까요?</label><div class="input-prefix"><span>tlk.io /</span><input id="channel" name="channel" placeholder="my-channel" maxlength="100" required autocomplete="off" spellcheck="false"></div>
-            <div class="field-row"><div><label for="bot-count">봇 수</label><div class="stepper"><button type="button" data-step="-1" aria-label="봇 수 줄이기">−</button><input id="bot-count" name="botCount" type="text" inputmode="numeric" value="1" required><span>개</span><button type="button" data-step="1" aria-label="봇 수 늘리기">+</button></div></div><div><label for="prefix">봇 이름</label><input id="prefix" name="prefix" value="notice-bot" maxlength="20" required spellcheck="false"></div></div>
+            <label for="prefix">봇 이름</label><input id="prefix" name="prefix" value="notice-bot" maxlength="20" required spellcheck="false">
             </fieldset>
             <fieldset id="padlet-fields" class="service-fields" hidden disabled>
-              <div class="service-note"><strong>패들렛 보드에 게시하기</strong><p>유료 Padlet 계정의 API 키와 보드 관리자 권한이 필요합니다. 설정한 간격마다 같은 내용의 새 게시물을 만듭니다.</p></div>
-              <label for="padlet-board">보드 주소 또는 ID</label><input id="padlet-board" name="boardId" maxlength="2048" placeholder="https://padlet.com/… 또는 보드 ID" required autocomplete="off" spellcheck="false">
+              <div class="service-note"><strong>익명으로 패들렛에 게시하기</strong><p>보드 링크를 입력하면 각 봇이 익명으로 접속해 제목과 내용을 작성합니다. 보드에서 방문자의 익명 작성을 허용해야 합니다.</p></div>
+              <label for="padlet-board">패들렛 보드 링크</label><input id="padlet-board" name="boardUrl" type="url" maxlength="2048" placeholder="https://padlet.com/…" required autocomplete="off" spellcheck="false">
               <label for="padlet-subject">게시물 제목 <span class="optional">선택</span></label><input id="padlet-subject" name="subject" maxlength="200" placeholder="게시물 제목을 입력하세요.">
-              <label for="padlet-section">섹션 ID <span class="optional">선택</span></label><input id="padlet-section" name="sectionId" maxlength="22" pattern="[a-zA-Z0-9_]{16,22}" placeholder="특정 섹션에 게시할 때 입력" autocomplete="off" spellcheck="false">
-              <label for="padlet-key">Padlet API 키</label><input id="padlet-key" name="apiKey" type="password" maxlength="4096" placeholder="Padlet 개발자 설정에서 발급한 API 키" required autocomplete="off" spellcheck="false">
-              <p class="field-help">API 키는 현재 연결한 실행기 서버로 전송됩니다. 브라우저 저장소와 실행 기록에는 저장하지 않습니다.</p>
-              <details class="padlet-guide"><summary>보드와 API 키 준비하기</summary><ol><li>유료 Padlet 계정(유료 Team·School 소속 포함)으로 로그인하세요.</li><li><a href="https://padlet.com/dashboard/settings/developers" target="_blank" rel="noopener noreferrer">개발자 설정</a>에서 API 키를 발급하세요.</li><li>관리하는 보드의 주소를 입력하세요. 맞춤 주소는 보드의 더 보기 → Developer 메뉴에서 ID를 확인해 입력하세요.</li><li>특정 섹션에 게시하려면 보드 조회 API의 <code>include=sections</code>로 확인한 섹션 ID를 입력하세요.</li></ol><a href="https://docs.padlet.dev/reference/add-post" target="_blank" rel="noopener noreferrer">Padlet 게시물 API 안내 ↗</a></details>
+              <p class="field-help">API 키나 로그인은 필요하지 않습니다. 로그인·추가 인증을 요구하는 보드에서는 실행이 중지됩니다.</p>
             </fieldset>
+            <label for="bot-count">봇 수</label><div class="stepper"><button type="button" data-step="-1" aria-label="봇 수 줄이기">−</button><input id="bot-count" name="botCount" type="text" inputmode="numeric" value="1" required><span>개</span><button type="button" data-step="1" aria-label="봇 수 늘리기">+</button></div>
             <div class="label-row"><label for="message">보낼 메시지</label><span id="char-count">0 / 1,000</span></div><textarea id="message" name="message" rows="5" maxlength="1000" placeholder="채널에 보낼 메시지를 입력하세요." required></textarea>
             <div class="field-row"><div><label for="interval">전송 간격</label><div class="input-suffix"><input id="interval" name="interval" type="text" inputmode="decimal" value="30" required><span>초마다</span></div></div><div><label for="limit">총 전송 수</label><div class="input-suffix"><input id="limit" name="limit" type="text" inputmode="numeric" value="10" required><span>건 후 종료</span></div></div>
             <p id="schedule-help" class="field-help">각 봇이 설정한 간격마다 독립적으로 보냅니다. 첫 메시지는 연결 완료 후 바로 전송되며, 총 전송 수는 모든 봇의 합계입니다.</p>
@@ -65,7 +63,7 @@
   </main>
   <dialog id="settings" aria-labelledby="settings-title">
     <div class="dialog-heading"><div><p class="eyebrow">CONNECT YOUR RUNNER</p><h2 id="settings-title">서버 연결</h2></div><button id="settings-close" class="icon-button" aria-label="닫기">×</button></div>
-    <p class="dialog-intro">실행기 서버 주소를 입력해 연결하세요. Padlet API 키는 게시 설정에서 입력합니다.</p>
+    <p class="dialog-intro">실행기 서버 주소를 입력해 연결하세요. 패들렛 익명 게시에는 브라우저가 설치된 실행기가 필요합니다.</p>
     <form id="connection-form"><label for="server-url">서버 주소</label><input id="server-url" type="url" placeholder="https://tlk-runner-xxxx.onrender.com" required autocomplete="url"><p class="field-help">기본 서버에 자동으로 연결됩니다. 다른 실행기를 쓰려면 주소를 변경하세요.</p><p id="connection-error" class="error-message" role="alert" hidden></p><button id="connect" class="button primary" type="submit">서버 연결 확인 →</button></form>
     <details class="deploy-guide"><summary>서버가 없다면? Render에서 시작하기</summary><ol><li>아래 버튼으로 Render 무료 서버를 만드세요.</li><li>Render에서 배포된 서버 주소를 복사하세요.</li><li>서버 주소를 위에 입력하고 연결하세요.</li></ol><a class="button secondary" href="https://render.com/deploy?repo=https%3A%2F%2Fgithub.com%2FDev-Cat0%2Ftlk" target="_blank" rel="noopener noreferrer">Render에 실행기 배포 ↗</a><p>무료 서버는 15분 동안 외부 요청이 없으면 잠듭니다. 잠자기·재시작·재배포 시 실행이 종료됩니다. 한 번의 실행은 최대 6시간입니다.</p></details>
   </dialog>

@@ -1,7 +1,7 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import { randomUUID } from 'node:crypto';
 import { TlkSession } from './tlk.mjs';
-import { PadletSession } from './padlet.mjs';
+import { PadletSession, PadletBrowser } from './padlet.mjs';
 import { validateConfig } from './config.mjs';
 
 export class Runner {
@@ -21,12 +21,12 @@ export class Runner {
   }
   start(input) {
     if (this.pending) throw Object.assign(new Error('이미 실행 중입니다. 먼저 중지하세요.'), { status: 409 });
-    const { apiKey, ...config } = validateConfig(input);
+    const config = validateConfig(input);
     this.controller = new AbortController();
     this.logId = 0;
     this.job = { id: randomUUID(), status: 'starting', config, sent: 0, startedAt: new Date().toISOString(), endedAt: null, nextAt: null, bots: [], logs: [] };
     this.log('info', config.platform === 'padlet' ? `패들렛 · ${config.boardId} 게시를 준비합니다.` : `#${config.channel} 연결을 시작합니다.`);
-    this.pending = Promise.resolve().then(() => this.run(this.controller.signal, apiKey)).finally(() => { this.pending = null; });
+    this.pending = Promise.resolve().then(() => this.run(this.controller.signal)).finally(() => { this.pending = null; });
     return this.snapshot();
   }
   async stop() {
@@ -37,18 +37,19 @@ export class Runner {
     await this.pending;
     return this.snapshot();
   }
-  async run(signal, apiKey) {
+  async run(signal) {
     const sessions = [];
     const { config } = this.job;
+    const browser = config.platform === 'padlet' ? new PadletBrowser() : null;
     const deadline = setTimeout(() => { this.log('info', '최대 실행 시간(6시간)에 도달했습니다.'); this.controller.abort(); }, this.maxDuration);
     deadline.unref?.();
     try {
       for (let i = 0; i < config.botCount; i++) {
         signal.throwIfAborted();
-        const session = config.platform === 'padlet' ? this.makePadletSession({ apiKey, subject: config.subject, sectionId: config.sectionId }) : this.makeSession();
+        const session = config.platform === 'padlet' ? this.makePadletSession({ subject: config.subject, browser }) : this.makeSession();
         sessions.push(session);
-        const name = config.platform === 'padlet' ? 'Padlet 계정' : `${config.prefix}-${String(i + 1).padStart(2, '0')}`;
-        await session.join(config.channel, name, signal);
+        const name = `${config.platform === 'padlet' ? '익명 봇' : config.prefix}-${String(i + 1).padStart(2, '0')}`;
+        await session.join(config.platform === 'padlet' ? config.boardUrl : config.channel, name, signal);
         signal.throwIfAborted();
         this.job.bots.push({ name, sent: 0 });
         this.log('info', `${name} ${config.platform === 'padlet' ? '전송 준비 완료' : '참가 완료'}`);
@@ -106,7 +107,8 @@ export class Runner {
       this.log(signal.aborted ? 'info' : 'error', signal.aborted ? '실행을 중지했습니다.' : `${error.name === 'TimeoutError' ? '서비스 응답 시간이 초과되었습니다. 전송 여부를 직접 확인하세요.' : error.message}`);
     } finally {
       clearTimeout(deadline);
-      for (const session of sessions) session.close();
+      await Promise.allSettled(sessions.map(session => Promise.resolve().then(() => session.close())));
+      await browser?.close();
       this.job.nextAt = null;
       this.job.endedAt = new Date().toISOString();
     }

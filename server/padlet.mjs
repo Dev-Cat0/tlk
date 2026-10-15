@@ -1,46 +1,96 @@
-const BASE = 'https://api.padlet.dev/v1';
+import { normalizePadletUrl } from './config.mjs';
+
+// One browser per run; each bot has an isolated guest cookie jar.
+export class PadletBrowser {
+  async get() {
+    this.pending ??= import('playwright').then(({ chromium }) => chromium.launch({ headless: true }));
+    try { return await this.pending; }
+    catch { throw Object.assign(new Error('패들렛 브라우저를 시작하지 못했습니다. 실행기에서 npm ci 및 npx playwright install chromium을 실행하세요.'), { name: 'BrowserSetupError' }); }
+  }
+  async close() {
+    if (this.pending) await this.pending.then(browser => browser.close()).catch(() => {});
+  }
+}
 
 export class PadletSession {
-  constructor({ apiKey, subject = '', sectionId = '', fetchImpl = fetch }) {
-    this.apiKey = apiKey;
+  constructor({ subject = '', browser, timeout = 15000 }) {
     this.subject = subject;
-    this.sectionId = sectionId;
-    this.fetch = fetchImpl;
+    this.browser = browser;
+    this.timeout = timeout;
+    this.confirmed = 0;
   }
-  async join(boardId, _name, signal) {
+  async operation(signal, work, message) {
     signal?.throwIfAborted();
-    this.boardId = boardId;
+    const abort = () => { void this.close(); };
+    signal?.addEventListener('abort', abort, { once: true });
+    try {
+      const result = await work();
+      signal?.throwIfAborted();
+      return result;
+    } catch (error) {
+      signal?.throwIfAborted();
+      if (error.name === 'BrowserSetupError') throw error;
+      throw new Error(this.blocked || message, { cause: error });
+    } finally { signal?.removeEventListener('abort', abort); }
+  }
+  async join(boardUrl, _name, signal) {
+    boardUrl = normalizePadletUrl(boardUrl);
+    await this.operation(signal, async () => {
+      const browser = await this.browser.get();
+      signal?.throwIfAborted();
+      this.context = await browser.newContext({ locale: 'en-US', acceptDownloads: false });
+      signal?.throwIfAborted();
+      this.page = await this.context.newPage();
+      this.page.setDefaultTimeout(this.timeout);
+      this.page.setDefaultNavigationTimeout(45000);
+      await this.context.route('**/*', async route => {
+        const request = route.request();
+        if (request.isNavigationRequest() && request.frame() === this.page.mainFrame()) {
+          try { normalizePadletUrl(request.url()); }
+          catch { await route.abort(); return; }
+        }
+        await route.continue();
+      });
+      this.page.on('response', response => {
+        if (!['POST', 'PUT', 'PATCH'].includes(response.request().method())) return;
+        if (!/(^|\.)padlet\.(com|org)$/.test(new URL(response.url()).hostname)) return;
+        if (response.status() === 429) this.blocked = '패들렛 전송 제한으로 중지했습니다. 자동 재시도하지 않습니다.';
+        if ([401, 403].includes(response.status())) this.blocked = '익명 게시 권한이 없거나 추가 인증이 필요합니다. 보드 설정을 확인하세요.';
+        if (this.blocked) void this.close();
+      });
+      const response = await this.page.goto(boardUrl, { waitUntil: 'domcontentloaded' });
+      if (!response?.ok()) throw new Error('board unavailable');
+      await this.postButton().waitFor({ state: 'visible' });
+    }, '익명 게시 화면을 열지 못했습니다. 링크·방문자 작성 권한·로그인 요구 여부를 확인하세요.');
+  }
+  postButton() {
+    return this.page.getByRole('button', { name: /^(?:\+\s*)?(?:Add (?:a )?post|Post|New post|게시물 추가|게시물 작성|새 게시물)(?:\s*\(.*\))?$/i }).filter({ visible: true }).first();
   }
   async send(text, signal) {
-    signal?.throwIfAborted();
-    const data = { type: 'post', attributes: { content: { body: text, ...(this.subject ? { subject: this.subject } : {}) } } };
-    if (this.sectionId) data.relationships = { section: { data: { id: this.sectionId } } };
-    let response;
-    try {
-      response = await this.fetch(`${BASE}/boards/${encodeURIComponent(this.boardId)}/posts`, {
-        method: 'POST', redirect: 'error',
-        signal: AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(15000)]),
-        headers: { 'X-API-KEY': this.apiKey, 'Content-Type': 'application/vnd.api+json', Accept: 'application/vnd.api+json' },
-        body: JSON.stringify({ data }),
-      });
-    } catch {
+    return this.operation(signal, async () => {
+      if (this.blocked) throw new Error(this.blocked);
+      const visibleCopies = this.page.getByText(text, { exact: true }).filter({ visible: true });
+      const before = await visibleCopies.count();
+      await this.postButton().click();
+      const publish = this.page.getByRole('button', { name: /^(Publish|게시|게시하기|발행)$/i }).filter({ visible: true });
+      await publish.waitFor({ state: 'visible' });
+      const title = this.page.getByPlaceholder(/^(Subject|Title|제목|주제)$/i).filter({ visible: true });
+      if (this.subject) await title.fill(this.subject);
+      const body = this.page.locator('[contenteditable="true"][role="textbox"]:visible, [contenteditable="true"][data-placeholder]:visible');
+      if (await body.count() === 1) await body.fill(text);
+      else await this.page.getByPlaceholder(/Write something|내용|본문|무언가|멋진/i).filter({ visible: true }).fill(text);
       signal?.throwIfAborted();
-      throw new Error('패들렛 응답을 확인하지 못했습니다. 보드에서 게시 여부를 확인하세요. 중복 게시 방지를 위해 자동 재시도하지 않습니다.');
-    }
-    // Never expose upstream error bodies: they may echo credentials or request data.
-    if (!response.ok) {
-      if (response.status === 429) throw new Error('패들렛 전송 제한으로 중지했습니다. 나중에 다시 실행하세요.');
-      if (response.status === 401) throw new Error('Padlet API 키가 유효하지 않습니다. 개발자 설정에서 키를 확인하세요.');
-      if (response.status === 403) throw new Error('패들렛 게시 권한이 없습니다. 유료 계정과 보드 관리자 권한을 확인하세요.');
-      if (response.status === 404) throw new Error('패들렛 보드 또는 섹션을 찾을 수 없습니다. ID와 접근 권한을 확인하세요.');
-      throw new Error(`패들렛 게시 요청이 거절되었습니다 (HTTP ${response.status}). 보드·섹션·게시물 내용을 확인하세요. 자동 재시도하지 않습니다.`);
-    }
-    let result;
-    try { result = await response.json(); } catch { throw new Error('패들렛 응답 형식을 확인하지 못했습니다. 보드에서 게시 여부를 확인하세요. 자동 재시도하지 않습니다.'); }
-    const post = result?.data;
-    const board = post?.relationships?.board?.data?.id;
-    if (result?.errors?.length || post?.type !== 'post' || typeof post.id !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(post.id) || (board && board !== this.boardId)) throw new Error('패들렛 게시 결과를 확인하지 못했습니다. 보드에서 게시 여부를 확인하세요. 중복 게시 방지를 위해 중지합니다.');
-    return post.id;
+      await publish.click();
+      await publish.waitFor({ state: 'hidden' });
+      // Closing the editor alone is not confirmation; new content must appear.
+      await visibleCopies.nth(before).waitFor({ state: 'visible' });
+      if (this.blocked) throw new Error(this.blocked);
+      return `화면확인-${++this.confirmed}`;
+    }, '게시 완료를 화면에서 확인하지 못했습니다. 보드에서 게시 여부를 확인하세요. 화면 변경·승인 대기·추가 인증일 수 있으며 중복 방지를 위해 자동 재시도하지 않습니다.');
   }
-  close() { this.apiKey = undefined; this.boardId = undefined; }
+  async close() {
+    if (!this.context) return;
+    this.closing ??= this.context.close().catch(() => {});
+    await this.closing;
+  }
 }

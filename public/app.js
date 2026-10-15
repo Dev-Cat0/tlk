@@ -37,9 +37,9 @@ function updateControls() {
   $('download-log').disabled = !job?.logs?.length;
 }
 function readConfig() {
-  const common = { platform: $('platform').value, message: $('message').value.trim(), interval: Number($('interval').value), limit: Number($('limit').value) };
+  const common = { platform: $('platform').value, botCount: Number($('bot-count').value), message: $('message').value.trim(), interval: Number($('interval').value), limit: Number($('limit').value) };
   return common.platform === 'padlet'
-    ? { ...common, boardId: $('padlet-board').value.trim(), subject: $('padlet-subject').value.trim(), sectionId: $('padlet-section').value.trim(), apiKey: $('padlet-key').value.trim() }
+    ? { ...common, boardUrl: $('padlet-board').value.trim(), subject: $('padlet-subject').value.trim() }
     : { ...common, channel: $('channel').value.trim(), botCount: Number($('bot-count').value), prefix: $('prefix').value.trim() };
 }
 function updatePlatform() {
@@ -49,15 +49,18 @@ function updatePlatform() {
   $('padlet-fields').hidden = !padlet;
   $('padlet-fields').disabled = !padlet;
   $('message').placeholder = padlet ? '패들렛에 게시할 본문을 입력하세요.' : '채널에 보낼 메시지를 입력하세요.';
-  $('schedule-help').textContent = padlet ? '설정한 간격마다 새 게시물을 만듭니다. 첫 게시물은 바로 생성되며, 권한·전송 제한 오류가 발생하면 중지합니다.' : '각 봇이 설정한 간격마다 독립적으로 보냅니다. 첫 메시지는 연결 완료 후 바로 전송되며, 총 전송 수는 모든 봇의 합계입니다.';
-  $('form-note').textContent = padlet ? '관리자 권한이 있는 패들렛 보드에 게시합니다.' : '운영하거나 자동 전송이 허용된 채널에서 사용하세요.';
+  document.querySelector('label[for="message"]').textContent = padlet ? '게시물 내용' : '보낼 메시지';
+  document.querySelector('label[for="limit"]').textContent = padlet ? '총 게시 수' : '총 전송 수';
+  document.querySelector('label[for="interval"]').textContent = padlet ? '게시 간격' : '전송 간격';
+  $('schedule-help').textContent = padlet ? '각 익명 봇이 설정한 간격마다 게시합니다. 총 게시 수는 모든 봇의 합계입니다. 첫 게시물은 연결 후 바로 작성하며 실제 간격은 페이지 응답 속도에 따라 길어질 수 있습니다.' : '각 봇이 설정한 간격마다 독립적으로 보냅니다. 첫 메시지는 연결 완료 후 바로 전송되며, 총 전송 수는 모든 봇의 합계입니다.';
+  $('form-note').textContent = padlet ? '운영하거나 자동 게시가 허용된 보드에서 사용하세요.' : '운영하거나 자동 전송이 허용된 채널에서 사용하세요.';
   updateSummary();
 }
 function updateSummary() {
   const config = readConfig();
   $('char-count').textContent = `${$('message').value.length.toLocaleString('ko-KR')} / 1,000`;
   const display = id => $(id).validity.valid ? decimalText($(id).value) : '—';
-  const sender = config.platform === 'padlet' ? 'Padlet 계정 1개가' : `봇 ${display('bot-count')}개가 각각`;
+  const sender = `${config.platform === 'padlet' ? '익명 봇' : '봇'} ${display('bot-count')}개가 각각`;
   $('summary').textContent = `${sender} ${display('interval')}초 간격으로 합계 ${display('limit')}건 전송`;
 }
 function validateNumber(id, normalize = false) {
@@ -142,7 +145,6 @@ $('run-form').addEventListener('submit', async event => {
   busy = true; generation++; updateControls();
   try {
     const result = await request('/api/start', { method: 'POST', body: readConfig() });
-    $('padlet-key').value = '';
     render(result.job);
   }
   catch (error) { showError('form-error', error); connectionState(false); }
@@ -166,7 +168,7 @@ function render(nextJob) {
   $('job-status').className = `pill ${job?.status || ''}`;
   setMetric('sent', job?.sent || 0, '건');
   const padlet = job?.config.platform === 'padlet';
-  $('sender-label').textContent = padlet ? '보내는 계정' : '참가한 봇';
+  $('sender-label').textContent = padlet ? '참가한 익명 봇' : '참가한 봇';
   setMetric('active-bots', job?.bots?.length || 0, '개');
   const progress = job ? Math.min(100, Math.round(job.sent / job.config.limit * 100)) : 0;
   $('progress').style.width = `${progress}%`;
@@ -179,10 +181,9 @@ function render(nextJob) {
   }
   if (changed && job && activeStates.has(job.status)) {
     $('platform').value = job.config.platform || 'tlk';
-    const fields = padlet ? [['padlet-board', 'boardUrl'], ['padlet-subject', 'subject'], ['padlet-section', 'sectionId']] : [['channel', 'channel'], ['bot-count', 'botCount'], ['prefix', 'prefix']];
-    for (const [id, key] of [...fields, ['message', 'message'], ['interval', 'interval'], ['limit', 'limit']]) $(id).value = typeof job.config[key] === 'number' ? decimalText(job.config[key]) : job.config[key];
+    const fields = padlet ? [['padlet-board', 'boardUrl'], ['padlet-subject', 'subject']] : [['channel', 'channel'], ['prefix', 'prefix']];
+    for (const [id, key] of [...fields, ['bot-count', 'botCount'], ['message', 'message'], ['interval', 'interval'], ['limit', 'limit']]) $(id).value = typeof job.config[key] === 'number' ? decimalText(job.config[key]) : job.config[key];
     for (const id of ['bot-count', 'interval', 'limit']) validateNumber(id);
-    $('padlet-key').value = '';
     updatePlatform();
   }
   $('bots').replaceChildren(...(job?.bots || []).map(bot => { const element = document.createElement('span'); element.className = 'bot-chip'; element.textContent = `${bot.name} · ${bot.sent}건`; return element; }));
