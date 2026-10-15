@@ -8,6 +8,7 @@ const enabled = process.env.BROWSER_TESTS === '1';
 const fixture = `<!doctype html><meta charset="utf-8"><button id="add">Add post</button><section id="posts"></section>
 <div id="composer" hidden><input placeholder="Subject"><div role="textbox" contenteditable="true"></div><button id="publish">Publish</button></div>
 <script>
+let postSequence = 1000;
 document.querySelector('#add').onclick = () => document.querySelector('#composer').hidden = false;
 document.querySelector('#publish').onclick = async () => {
   const title = document.querySelector('input').value;
@@ -17,9 +18,21 @@ document.querySelector('#publish').onclick = async () => {
   document.querySelector('#composer').hidden = true;
   if (new URL(location.href).searchParams.has('unconfirmed')) return;
   const post = document.createElement('article');
-  const h = document.createElement('h2'); h.textContent = title;
-  const p = document.createElement('p'); p.textContent = text;
-  post.append(h, p); document.querySelector('#posts').append(post);
+  post.dataset.testid = 'postWrapper'; post.dataset.id = String(++postSequence);
+  const h = document.createElement('h2'); h.dataset.testid = 'postSubject'; h.textContent = title;
+  const p = document.createElement('p'); p.dataset.testid = 'postBody'; p.textContent = text;
+  const author = document.createElement('span'); author.dataset.testid = 'surfacePostAuthor'; author.textContent = document.body.dataset.confirmedName || '';
+  post.append(h, p, author); document.querySelector('#posts').append(post);
+  if (new URL(location.href).searchParams.has('lazy')) {
+    // Old identical posts disappear as the viewport moves, while every ID stays.
+    for (const old of document.querySelectorAll('[data-testid="postWrapper"]')) if (old !== post) old.replaceChildren();
+    const content = document.createDocumentFragment(); content.append(...post.childNodes);
+    post.style.marginTop = '2000px'; post.style.minHeight = '1px';
+    const observer = new IntersectionObserver(entries => {
+      if (entries.some(entry => entry.isIntersecting)) { post.append(content); observer.disconnect(); }
+    });
+    observer.observe(post);
+  }
 };
 </script>`;
 
@@ -91,8 +104,8 @@ test('browser adapter fills, confirms, isolates guests, stops on 429 and rejects
   await second.join('https://padlet.com/test/board');
   await contexts[0].addCookies([{ name: 'guest', value: 'first', domain: 'padlet.com', path: '/' }]);
   assert.deepEqual(await contexts[1].cookies(), []);
-  assert.equal(await first.send('내용'), '화면확인-1');
-  assert.equal(await first.send('내용'), '화면확인-2');
+  assert.equal(await first.send('내용'), '1001');
+  assert.equal(await first.send('내용'), '1002');
   assert.deepEqual(sent.slice(0, 2), [{ title: '제목', text: '내용' }, { title: '제목', text: '내용' }]);
   await first.close(); await second.close();
   for (const query of ['current', 'current&english=1', 'current&noids=1', 'current&english=1&noids=1']) {
@@ -100,7 +113,7 @@ test('browser adapter fills, confirms, isolates guests, stops on 429 and rejects
       const session = new PadletSession({ browser: provider, subject: '제목', timeout: 3000 });
       try {
         await session.join(`https://padlet.com/test/board?${query}`);
-        assert.equal(await session.send('본문'), '화면확인-1');
+        assert.equal(await session.send('본문'), '1001');
         assert.deepEqual(sent.at(-1), { title: '제목', text: '본문' });
       } finally { await session.close(); }
     });
@@ -122,12 +135,12 @@ test('browser adapter fills, confirms, isolates guests, stops on 429 and rejects
           assert.equal(session.confirmed, 0);
           assert.equal(sent.length, start);
         } else {
-          assert.equal(await session.send('dd'), '화면확인-1');
+          assert.equal(await session.send('dd'), '1001');
           assert.equal(sent.length, start + 1);
           assert.deepEqual(sent.at(-1), { title: 'dd', text: 'dd' });
           assert.equal(await session.page.locator('body').getAttribute('data-confirmed-name'), query.includes('empty') ? 'Guest' : '나뭇결달');
           // A subsequent post by the same guest skips the name form.
-          assert.equal(await session.send('dd'), '화면확인-2');
+          assert.equal(await session.send('dd'), '1002');
           assert.equal(sent.length, start + 2);
         }
         assert.equal(await session.page.locator('body').getAttribute('data-name-submits'), '1');
@@ -141,7 +154,7 @@ test('browser adapter fills, confirms, isolates guests, stops on 429 and rejects
   assert.equal(rate.confirmed, 0); await rate.close();
   const missing = new PadletSession({ browser: provider, timeout: 3000 });
   await missing.join('https://padlet.com/test/board?unconfirmed=1');
-  await assert.rejects(missing.send('not visible'), /보드에 게시물 표시 확인.*중복 방지/);
+  await assert.rejects(missing.send('not visible'), /새 게시물 ID·내용 확인.*중복 방지/);
   assert.equal(missing.confirmed, 0); await missing.close();
   await t.test('five isolated guests share one live page across queued sends', async () => {
     maxPages = 0;
@@ -154,7 +167,7 @@ test('browser adapter fills, confirms, isolates guests, stops on 429 and rejects
         await session.join('https://padlet.com/test/board?current');
         await session.context.addCookies([{ name: 'guest', value: String(index), domain: 'padlet.com', path: '/' }]);
       }
-      assert.deepEqual(await Promise.all(sessions.map(session => session.send('queued body'))), Array(5).fill('화면확인-1'));
+      assert.deepEqual(await Promise.all(sessions.map(session => session.send('queued body'))), Array(5).fill('1001'));
       assert.equal(maxPages, 1);
       assert.equal(maxContexts, 1);
       for (const [index, session] of sessions.entries()) {
@@ -180,6 +193,31 @@ test('browser adapter fills, confirms, isolates guests, stops on 429 and rejects
     assert.equal(maxPages, 1);
     assert.equal(maxContexts, 1);
     assert.equal(browser.contexts().length, 0);
+  });
+  await t.test('reveals lazy shelf posts and confirms repeated text by distinct saved IDs', async () => {
+    const session = new PadletSession({ browser: provider, subject: 'dd', timeout: 3000 });
+    try {
+      await session.join('https://padlet.com/test/board?lazy');
+      assert.equal(await session.send('dddddd'), '1001');
+      assert.equal(await session.send('dddddd'), '1002');
+      assert.equal(await session.page.getByTestId('postBody').count(), 1);
+      assert.equal(session.confirmed, 2);
+    } finally { await session.close(); }
+  });
+  await t.test('old, draft and unrelated posts cannot confirm a missing publication', async () => {
+    const session = new PadletSession({ browser: provider, subject: 'dd', timeout: 600 });
+    try {
+      await session.join('https://padlet.com/test/board?unconfirmed');
+      await session.page.evaluate(() => {
+        const card = (id, title, body) => `<article data-testid="postWrapper" data-id="${id}"><h3 data-testid="postSubject">${title}</h3><p data-testid="postBody">${body}</p></article>`;
+        document.querySelector('#posts').innerHTML = card('500', 'dd', 'dddddd');
+        document.querySelector('#publish').addEventListener('click', () => {
+          document.querySelector('#posts').insertAdjacentHTML('beforeend', card('draft-1', 'dd', 'dddddd') + card('501', 'other', 'dddddd') + card('502', 'dd', 'other'));
+        });
+      });
+      await assert.rejects(session.send('dddddd'), /새 게시물 ID·내용 확인.*중복 방지/);
+      assert.equal(session.confirmed, 0);
+    } finally { await session.close(); }
   });
 });
 
