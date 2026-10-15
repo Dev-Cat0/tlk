@@ -2,6 +2,23 @@ import { normalizePadletUrl } from './config.mjs';
 
 // One browser per run; each bot has an isolated guest cookie jar.
 export class PadletBrowser {
+  // Only one live board page fits reliably on the 512 MiB runner. Queue work
+  // while keeping each guest's own context (cookies and local storage).
+  async run(session, work, signal) {
+    const previous = this.tail ?? Promise.resolve();
+    let release;
+    this.tail = new Promise(resolve => { release = resolve; });
+    await previous;
+    try {
+      signal?.throwIfAborted();
+      if (this.activeSession !== session) {
+        await this.activeSession?.park();
+        signal?.throwIfAborted();
+        this.activeSession = session;
+      }
+      return await work();
+    } finally { release(); }
+  }
   async get() {
     this.pending ??= import('playwright').then(({ chromium }) => chromium.launch({ headless: true }));
     try { return await this.pending; }
@@ -25,7 +42,7 @@ export class PadletSession {
     const abort = () => { void this.close(); };
     signal?.addEventListener('abort', abort, { once: true });
     try {
-      const result = await work();
+      const result = this.browser.run ? await this.browser.run(this, work, signal) : await work();
       signal?.throwIfAborted();
       return result;
     } catch (error) {
@@ -35,20 +52,17 @@ export class PadletSession {
     } finally { signal?.removeEventListener('abort', abort); }
   }
   async join(boardUrl, _name, signal) {
-    boardUrl = normalizePadletUrl(boardUrl);
-    await this.operation(signal, async () => {
+    this.boardUrl = normalizePadletUrl(boardUrl);
+    await this.operation(signal, () => this.open(signal), '익명 게시 화면을 열지 못했습니다. 링크·방문자 작성 권한·로그인 요구 여부를 확인하세요.');
+  }
+  async open(signal) {
+      signal?.throwIfAborted();
+      if (this.page && !this.page.isClosed()) return;
       const browser = await this.browser.get();
       signal?.throwIfAborted();
-      this.context = await browser.newContext({ locale: 'en-US', acceptDownloads: false, reducedMotion: 'reduce' });
-      signal?.throwIfAborted();
-      this.page = await this.context.newPage();
-      this.page.setDefaultTimeout(this.timeout);
-      this.page.setDefaultNavigationTimeout(this.readyTimeout);
-      const failures = { requests: 0, http: 0, crashed: false };
-      this.page.on('crash', () => { failures.crashed = true; });
-      this.page.on('requestfailed', request => {
-        if (['document', 'script', 'xhr', 'fetch'].includes(request.resourceType())) failures.requests++;
-      });
+      if (!this.context) {
+        this.context = await browser.newContext({ locale: 'en-US', acceptDownloads: false, reducedMotion: 'reduce' });
+        signal?.throwIfAborted();
       await this.context.route('**/*', async route => {
         const request = route.request();
         // Text-only posting does not need board attachments, avatars or web fonts.
@@ -56,11 +70,21 @@ export class PadletSession {
         if (['image', 'media', 'font'].includes(request.resourceType())) {
           await route.abort(); return;
         }
-        if (request.isNavigationRequest() && request.frame() === this.page.mainFrame()) {
+        if (request.isNavigationRequest() && request.frame() === this.page?.mainFrame()) {
           try { normalizePadletUrl(request.url()); }
           catch { await route.abort(); return; }
         }
         await route.continue();
+      });
+      }
+      this.page = await this.context.newPage();
+      signal?.throwIfAborted();
+      this.page.setDefaultTimeout(this.timeout);
+      this.page.setDefaultNavigationTimeout(this.readyTimeout);
+      const failures = { requests: 0, http: 0, crashed: false };
+      this.page.on('crash', () => { failures.crashed = true; });
+      this.page.on('requestfailed', request => {
+        if (['document', 'script', 'xhr', 'fetch'].includes(request.resourceType())) failures.requests++;
       });
       this.page.on('response', response => {
         if (response.status() >= 400 && ['document', 'script', 'xhr', 'fetch'].includes(response.request().resourceType())) failures.http++;
@@ -70,7 +94,7 @@ export class PadletSession {
         if ([401, 403].includes(response.status())) this.blocked = '익명 게시 권한이 없거나 추가 인증이 필요합니다. 보드 설정을 확인하세요.';
         if (this.blocked) void this.close();
       });
-      const response = await this.page.goto(boardUrl, { waitUntil: 'domcontentloaded' });
+      const response = await this.page.goto(this.boardUrl, { waitUntil: 'domcontentloaded' });
       if (!response?.ok()) {
         const status = response?.status();
         throw Object.assign(new Error(`패들렛 보드를 불러오지 못했습니다${status ? ` (HTTP ${status})` : ''}. 링크와 접근 권한을 확인하세요.`), { name: 'PadletAccessError' });
@@ -81,7 +105,10 @@ export class PadletSession {
         const detail = failures.crashed ? '브라우저 페이지가 중단되었습니다. 서버 메모리를 확인하세요.' : `${this.readyTimeout / 1000}초 대기, 필수 요청 실패 ${failures.requests}건, HTTP 오류 ${failures.http}건. 서버 부하·방문자 작성 권한·로그인 요구를 확인하세요.`;
         throw Object.assign(new Error(`패들렛 페이지는 열렸지만 게시물 작성 버튼을 찾지 못했습니다. ${detail}`), { name: 'PadletAccessError', cause: error });
       }
-    }, '익명 게시 화면을 열지 못했습니다. 링크·방문자 작성 권한·로그인 요구 여부를 확인하세요.');
+  }
+  async park() {
+    if (this.page) await this.page.close();
+    this.page = null;
   }
   postButton() {
     // Padlet's current accessible names differ from the visible button text.
@@ -98,6 +125,7 @@ export class PadletSession {
   async send(text, signal) {
     return this.operation(signal, async () => {
       if (this.blocked) throw new Error(this.blocked);
+      await this.open(signal);
       const visibleCopies = this.page.getByText(text, { exact: true }).filter({ visible: true });
       const before = await visibleCopies.count();
       await this.postButton().click();

@@ -44,6 +44,7 @@ export class Runner {
     const deadline = setTimeout(() => { this.log('info', '최대 실행 시간(6시간)에 도달했습니다.'); this.controller.abort(); }, this.maxDuration);
     deadline.unref?.();
     try {
+      if (config.platform === 'padlet') this.log('info', '메모리 절약을 위해 익명 세션별 브라우저 화면을 하나씩 사용합니다. 실제 게시 간격은 로딩·처리 시간보다 짧아질 수 없습니다.');
       for (let i = 0; i < config.botCount; i++) {
         signal.throwIfAborted();
         const session = config.platform === 'padlet' ? this.makePadletSession({ subject: config.subject, browser }) : this.makeSession();

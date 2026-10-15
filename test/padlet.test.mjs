@@ -1,10 +1,28 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PadletSession } from '../server/padlet.mjs';
+import { PadletSession, PadletBrowser } from '../server/padlet.mjs';
 import { validateConfig } from '../server/config.mjs';
 import { Runner } from '../server/runner.mjs';
 
 const config = { platform: 'padlet', boardUrl: 'https://padlet.com/teacher/my-board', subject: '공지', message: '본문', botCount: 3, interval: 0.25, limit: 7 };
+
+test('browser queue releases on failure and skips cancelled waiters', async () => {
+  const browser = new PadletBrowser();
+  let release, entered, parked = 0, ran = 0;
+  const ready = new Promise(resolve => { entered = resolve; });
+  const gate = new Promise(resolve => { release = resolve; });
+  const first = browser.run({ park: async () => { parked++; } }, async () => { entered(); await gate; throw new Error('failed'); });
+  const failed = assert.rejects(first, /failed/);
+  await ready;
+  const controller = new AbortController();
+  const cancelled = browser.run({}, async () => { ran++; }, controller.signal);
+  const aborted = assert.rejects(cancelled, { name: 'AbortError' });
+  const last = browser.run({}, async () => { ran++; });
+  controller.abort(); release();
+  await Promise.all([failed, aborted, last]);
+  assert.equal(ran, 1);
+  assert.equal(parked, 1);
+});
 
 test('connection check prepares every guest but never sends, and closes all sessions', async () => {
   let joined = 0, sent = 0, closed = 0;

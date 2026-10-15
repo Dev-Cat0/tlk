@@ -15,7 +15,7 @@ export function createApp({ origins, runner = new Runner() }) {
       res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
       res.writeHead(204); return res.end();
     }
-    if (req.url === '/health' && req.method === 'GET') return reply(200, { ok: true, service: 'tlk-runner', version: 'padlet-guest-4' });
+    if (req.url === '/health' && req.method === 'GET') return reply(200, { ok: true, service: 'tlk-runner', version: 'padlet-guest-5' });
     try {
       if (req.url === '/api/status' && req.method === 'GET') return reply(200, { job: runner.snapshot() });
       if (req.url === '/api/stop' && req.method === 'POST') return reply(200, { job: await runner.stop() });
