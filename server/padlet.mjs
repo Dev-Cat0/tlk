@@ -154,7 +154,23 @@ export class PadletSession {
       publishAttempted = true;
       await publish.click();
       step('작성창 닫힘 확인');
-      await publish.waitFor({ state: 'hidden' });
+      // First-time guests must confirm Padlet's generated display name before
+      // the pending post is submitted. The modal can appear asynchronously.
+      const guestName = this.page.getByTestId('surfaceGuestIdModalUserNameInput');
+      const next = await Promise.race([
+        publish.waitFor({ state: 'hidden', timeout: this.readyTimeout }).then(() => 'published'),
+        guestName.waitFor({ state: 'visible', timeout: this.readyTimeout }).then(() => 'guest-name')
+      ]);
+      if (next === 'guest-name') {
+        signal?.throwIfAborted();
+        step('게스트 이름 확인');
+        // Keep the suggested anonymous name; never use a real account identity.
+        if (!(await guestName.inputValue()).trim()) await guestName.fill('Guest');
+        await this.page.locator('form').filter({ has: guestName })
+          .getByRole('button', { name: /^(Done|완료)$/i }).click();
+        step('작성창 닫힘 확인');
+        await publish.waitFor({ state: 'hidden', timeout: this.readyTimeout });
+      }
       // Closing the editor alone is not confirmation; new content must appear.
       step('보드에 게시물 표시 확인');
       await visibleCopies.nth(before).waitFor({ state: 'visible' });

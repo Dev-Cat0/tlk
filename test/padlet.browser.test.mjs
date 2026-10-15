@@ -33,6 +33,31 @@ function currentFixture({ testIds = true, english = false } = {}) {
     .replace("document.querySelector('input').value", "document.querySelector('textarea').value");
 }
 
+// Live guest flow: Publish opens a delayed name form while the composer stays
+// visible. Done submits the original post, without another Publish click.
+function guestFixture({ english = false, empty = false, stuck = false } = {}) {
+  return currentFixture({ english }).replace('</script>', `
+const submitPost = document.querySelector('#publish').onclick;
+let named = false;
+document.querySelector('#publish').onclick = () => {
+  if (named) return submitPost();
+  setTimeout(() => {
+    const form = document.createElement('form');
+    form.innerHTML = '<input data-testid="surfaceGuestIdModalUserNameInput" aria-label="${english ? 'Name' : '이름'}" value="${empty ? '' : '나뭇결달'}"><button>${english ? 'Done' : '완료'}</button>';
+    form.onsubmit = event => {
+      event.preventDefault();
+      const input = form.querySelector('input');
+      document.body.dataset.confirmedName = input.value;
+      document.body.dataset.nameSubmits = Number(document.body.dataset.nameSubmits || 0) + 1;
+      if (!input.value.trim() || ${stuck}) return;
+      named = true; form.remove(); submitPost();
+    };
+    document.body.append(form);
+  }, 250);
+};
+</script>`);
+}
+
 test('browser adapter fills, confirms, isolates guests, stops on 429 and rejects missing confirmation', { skip: !enabled }, async t => {
   const { chromium } = await import('playwright');
   const browser = await chromium.launch();
@@ -52,7 +77,7 @@ test('browser adapter fills, confirms, isolates guests, stops on 429 and rejects
           await route.fulfill({ status: new URL(page.url()).searchParams.has('rate') ? 429 : 200, body: '{}' });
         } else {
           const params = new URL(route.request().url()).searchParams;
-          await route.fulfill({ status: params.has('denied') ? 403 : 200, contentType: 'text/html', body: params.has('current') ? currentFixture({ testIds: !params.has('noids'), english: params.has('english') }) : params.has('readonly') ? '<h1>Read-only board</h1>' : fixture });
+          await route.fulfill({ status: params.has('denied') ? 403 : 200, contentType: 'text/html', body: params.has('guest') ? guestFixture({ english: params.has('english'), empty: params.has('empty'), stuck: params.has('stuck') }) : params.has('current') ? currentFixture({ testIds: !params.has('noids'), english: params.has('english') }) : params.has('readonly') ? '<h1>Read-only board</h1>' : fixture });
         }
       });
       return page;
@@ -83,6 +108,31 @@ test('browser adapter fills, confirms, isolates guests, stops on 429 and rejects
     const session = new PadletSession({ browser: provider, timeout: 300 });
     try { await assert.rejects(session.join(`https://padlet.com/test/board?${query}`), error); }
     finally { await session.close(); }
+  }
+  for (const query of ['guest', 'guest&english=1', 'guest&empty=1', 'guest&stuck=1']) {
+    await t.test(`guest name confirmation: ${query}`, async () => {
+      const progress = [];
+      const session = new PadletSession({ browser: provider, subject: 'dd', timeout: 1500, readyTimeout: 1500, onProgress: step => progress.push(step) });
+      const start = sent.length;
+      try {
+        await session.join(`https://padlet.com/test/board?${query}`);
+        if (query.includes('stuck')) {
+          await assert.rejects(session.send('dd'), /작성창 닫힘 확인.*중복 방지/);
+          assert.equal(session.confirmed, 0);
+          assert.equal(sent.length, start);
+        } else {
+          assert.equal(await session.send('dd'), '화면확인-1');
+          assert.equal(sent.length, start + 1);
+          assert.deepEqual(sent.at(-1), { title: 'dd', text: 'dd' });
+          assert.equal(await session.page.locator('body').getAttribute('data-confirmed-name'), query.includes('empty') ? 'Guest' : '나뭇결달');
+          // A subsequent post by the same guest skips the name form.
+          assert.equal(await session.send('dd'), '화면확인-2');
+          assert.equal(sent.length, start + 2);
+        }
+        assert.equal(await session.page.locator('body').getAttribute('data-name-submits'), '1');
+        assert.equal(progress.filter(step => step === '게스트 이름 확인').length, 1);
+      } finally { await session.close(); }
+    });
   }
   const rate = new PadletSession({ browser: provider, timeout: 10000 });
   await rate.join('https://padlet.com/test/board?rate=1');
