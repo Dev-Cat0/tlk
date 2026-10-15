@@ -90,3 +90,31 @@ test('browser adapter fills, confirms, isolates guests, stops on 429 and rejects
   await assert.rejects(missing.send('not visible'), /게시 완료/);
   assert.equal(missing.confirmed, 0); await missing.close();
 });
+
+test('slow board readiness has its own budget and skips only nonessential assets', { skip: !enabled }, async t => {
+  const { chromium } = await import('playwright');
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const continued = [], aborted = [];
+  const provider = { get: async () => ({ newContext: async options => {
+    const context = await browser.newContext(options);
+    const installRoute = context.route.bind(context);
+    context.route = (pattern, handler) => installRoute(pattern, route => handler({
+      request: () => route.request(),
+      abort: async () => { aborted.push(route.request().resourceType()); await route.abort(); },
+      continue: async () => {
+        const type = route.request().resourceType(); continued.push(type);
+        if (type === 'document') return route.fulfill({ contentType: 'text/html', body: `<!doctype html><img src="/avatar.png"><script src="/app.js"></script>` });
+        return route.fulfill({ contentType: 'application/javascript', body: `setTimeout(() => { document.body.insertAdjacentHTML('beforeend', '<button data-testid="surfaceAddPostButton">+</button>'); }, 200);` });
+      }
+    }));
+    return context;
+  } }) };
+  const session = new PadletSession({ browser: provider, timeout: 50, readyTimeout: 2000 });
+  t.after(() => session.close());
+  await session.join('https://padlet.com/test/slow-board');
+  assert.ok(continued.includes('document'));
+  assert.ok(continued.includes('script'));
+  assert.ok(aborted.includes('image'));
+  assert.ok(!continued.includes('image'));
+});

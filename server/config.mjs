@@ -3,12 +3,13 @@ export function validateConfig(input) {
   const platform = input.platform ?? 'tlk';
   if (!['tlk', 'padlet'].includes(platform)) throw new Error('지원하지 않는 서비스입니다.');
   if (platform === 'padlet') {
+    if (input.checkOnly !== undefined && typeof input.checkOnly !== 'boolean') throw new Error('연결 검사 설정은 true 또는 false여야 합니다.');
     const boardUrl = normalizePadletUrl(input.boardUrl ?? input.boardId);
     const boardId = new URL(boardUrl).pathname.split('/').filter(Boolean).at(-1);
     const subject = String(input.subject ?? '').trim();
     if (subject.length > 200) throw new Error('게시물 제목은 200자 이내로 입력하세요.');
     const common = validateConfig({ ...input, platform: 'tlk', channel: 'padlet', prefix: 'guest' });
-    return { ...common, platform, boardId, boardUrl, subject };
+    return { ...common, platform, boardId, boardUrl, subject, checkOnly: input.checkOnly === true };
   }
   let channel = String(input.channel ?? '').trim();
   if (/^https?:\/\//i.test(channel)) {

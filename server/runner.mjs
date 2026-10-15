@@ -25,7 +25,7 @@ export class Runner {
     this.controller = new AbortController();
     this.logId = 0;
     this.job = { id: randomUUID(), status: 'starting', config, sent: 0, startedAt: new Date().toISOString(), endedAt: null, nextAt: null, bots: [], logs: [] };
-    this.log('info', config.platform === 'padlet' ? `패들렛 · ${config.boardId} 게시를 준비합니다.` : `#${config.channel} 연결을 시작합니다.`);
+    this.log('info', config.platform === 'padlet' ? `패들렛 · ${config.boardId} ${config.checkOnly ? '연결을 검사합니다. 게시물은 전송하지 않습니다.' : '게시를 준비합니다.'}` : `#${config.channel} 연결을 시작합니다.`);
     this.pending = Promise.resolve().then(() => this.run(this.controller.signal)).finally(() => { this.pending = null; });
     return this.snapshot();
   }
@@ -49,10 +49,17 @@ export class Runner {
         const session = config.platform === 'padlet' ? this.makePadletSession({ subject: config.subject, browser }) : this.makeSession();
         sessions.push(session);
         const name = `${config.platform === 'padlet' ? '익명 봇' : config.prefix}-${String(i + 1).padStart(2, '0')}`;
-        await session.join(config.platform === 'padlet' ? config.boardUrl : config.channel, name, signal);
+        if (config.platform === 'padlet') this.log('info', `${name} · 보드 로딩 중 (최대 90초 대기)`);
+        try { await session.join(config.platform === 'padlet' ? config.boardUrl : config.channel, name, signal); }
+        catch (error) { throw new Error(`${name} · ${error.message}`, { cause: error }); }
         signal.throwIfAborted();
         this.job.bots.push({ name, sent: 0 });
         this.log('info', `${name} ${config.platform === 'padlet' ? '전송 준비 완료' : '참가 완료'}`);
+      }
+      if (config.checkOnly) {
+        this.job.status = 'completed';
+        this.log('success', `익명 봇 ${sessions.length}개 연결 검사 완료. 게시물은 전송하지 않았습니다.`);
+        return;
       }
       this.job.status = 'running';
       const workers = new AbortController();

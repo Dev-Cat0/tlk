@@ -13,10 +13,11 @@ export class PadletBrowser {
 }
 
 export class PadletSession {
-  constructor({ subject = '', browser, timeout = 15000 }) {
+  constructor({ subject = '', browser, timeout = 30000, readyTimeout = timeout * 3 }) {
     this.subject = subject;
     this.browser = browser;
     this.timeout = timeout;
+    this.readyTimeout = readyTimeout;
     this.confirmed = 0;
   }
   async operation(signal, work, message) {
@@ -38,13 +39,23 @@ export class PadletSession {
     await this.operation(signal, async () => {
       const browser = await this.browser.get();
       signal?.throwIfAborted();
-      this.context = await browser.newContext({ locale: 'en-US', acceptDownloads: false });
+      this.context = await browser.newContext({ locale: 'en-US', acceptDownloads: false, reducedMotion: 'reduce' });
       signal?.throwIfAborted();
       this.page = await this.context.newPage();
       this.page.setDefaultTimeout(this.timeout);
-      this.page.setDefaultNavigationTimeout(45000);
+      this.page.setDefaultNavigationTimeout(this.readyTimeout);
+      const failures = { requests: 0, http: 0, crashed: false };
+      this.page.on('crash', () => { failures.crashed = true; });
+      this.page.on('requestfailed', request => {
+        if (['document', 'script', 'xhr', 'fetch'].includes(request.resourceType())) failures.requests++;
+      });
       await this.context.route('**/*', async route => {
         const request = route.request();
+        // Text-only posting does not need board attachments, avatars or web fonts.
+        // Keep scripts, styles and API requests so the normal composer still works.
+        if (['image', 'media', 'font'].includes(request.resourceType())) {
+          await route.abort(); return;
+        }
         if (request.isNavigationRequest() && request.frame() === this.page.mainFrame()) {
           try { normalizePadletUrl(request.url()); }
           catch { await route.abort(); return; }
@@ -52,6 +63,7 @@ export class PadletSession {
         await route.continue();
       });
       this.page.on('response', response => {
+        if (response.status() >= 400 && ['document', 'script', 'xhr', 'fetch'].includes(response.request().resourceType())) failures.http++;
         if (!['POST', 'PUT', 'PATCH'].includes(response.request().method())) return;
         if (!/(^|\.)padlet\.(com|org)$/.test(new URL(response.url()).hostname)) return;
         if (response.status() === 429) this.blocked = '패들렛 전송 제한으로 중지했습니다. 자동 재시도하지 않습니다.';
@@ -63,10 +75,11 @@ export class PadletSession {
         const status = response?.status();
         throw Object.assign(new Error(`패들렛 보드를 불러오지 못했습니다${status ? ` (HTTP ${status})` : ''}. 링크와 접근 권한을 확인하세요.`), { name: 'PadletAccessError' });
       }
-      try { await this.postButton().waitFor({ state: 'visible' }); }
+      try { await this.postButton().waitFor({ state: 'visible', timeout: this.readyTimeout }); }
       catch (error) {
         if (this.blocked || signal?.aborted) throw error;
-        throw Object.assign(new Error('패들렛 페이지는 열렸지만 게시물 작성 버튼을 찾지 못했습니다. 방문자 작성 권한·로그인 요구·페이지 로딩 상태를 확인하세요.'), { name: 'PadletAccessError', cause: error });
+        const detail = failures.crashed ? '브라우저 페이지가 중단되었습니다. 서버 메모리를 확인하세요.' : `${this.readyTimeout / 1000}초 대기, 필수 요청 실패 ${failures.requests}건, HTTP 오류 ${failures.http}건. 서버 부하·방문자 작성 권한·로그인 요구를 확인하세요.`;
+        throw Object.assign(new Error(`패들렛 페이지는 열렸지만 게시물 작성 버튼을 찾지 못했습니다. ${detail}`), { name: 'PadletAccessError', cause: error });
       }
     }, '익명 게시 화면을 열지 못했습니다. 링크·방문자 작성 권한·로그인 요구 여부를 확인하세요.');
   }

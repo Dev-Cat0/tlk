@@ -6,6 +6,22 @@ import { Runner } from '../server/runner.mjs';
 
 const config = { platform: 'padlet', boardUrl: 'https://padlet.com/teacher/my-board', subject: '공지', message: '본문', botCount: 3, interval: 0.25, limit: 7 };
 
+test('connection check prepares every guest but never sends, and closes all sessions', async () => {
+  let joined = 0, sent = 0, closed = 0;
+  const runner = new Runner({ makePadletSession: () => ({
+    join: async () => { joined++; }, send: async () => { sent++; }, close: async () => { closed++; }
+  }) });
+  runner.start({ ...config, botCount: 5, checkOnly: true });
+  await runner.pending;
+  assert.equal(runner.snapshot().status, 'completed');
+  assert.equal(joined, 5);
+  assert.equal(sent, 0);
+  assert.equal(closed, 5);
+  assert.equal(runner.snapshot().sent, 0);
+  assert.throws(() => validateConfig({ ...config, checkOnly: 'false' }));
+  assert.equal(validateConfig(config).checkOnly, false);
+});
+
 test('guest config accepts full custom links, preserves sharing query, and needs no key', () => {
   const parsed = validateConfig({ ...config, boardUrl: config.boardUrl + '?share=1#top', apiKey: 'obsolete-key', sectionId: 'obsolete' });
   assert.equal(parsed.boardUrl, config.boardUrl + '?share=1');
