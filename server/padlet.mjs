@@ -3,7 +3,7 @@ import { normalizePadletUrl } from './config.mjs';
 // One browser per run; each bot has an isolated guest cookie jar.
 export class PadletBrowser {
   // Only one live board page fits reliably on the 512 MiB runner. Queue work
-  // while keeping each guest's own context (cookies and local storage).
+  // while preserving each guest's cookies and local storage separately.
   async run(session, work, signal) {
     const previous = this.tail ?? Promise.resolve();
     let release;
@@ -61,7 +61,7 @@ export class PadletSession {
       const browser = await this.browser.get();
       signal?.throwIfAborted();
       if (!this.context) {
-        this.context = await browser.newContext({ locale: 'en-US', acceptDownloads: false, reducedMotion: 'reduce' });
+        this.context = await browser.newContext({ locale: 'en-US', acceptDownloads: false, reducedMotion: 'reduce', storageState: this.storageState });
         signal?.throwIfAborted();
       await this.context.route('**/*', async route => {
         const request = route.request();
@@ -107,7 +107,12 @@ export class PadletSession {
       }
   }
   async park() {
-    if (this.page) await this.page.close();
+    if (!this.context) return;
+    // Closing just the tab leaves renderer/cache allocations in its context.
+    // Retain guest storage, then release the entire inactive context.
+    this.storageState = await this.context.storageState({ indexedDB: true });
+    await this.context.close();
+    this.context = null;
     this.page = null;
   }
   postButton() {

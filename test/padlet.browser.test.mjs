@@ -38,13 +38,14 @@ test('browser adapter fills, confirms, isolates guests, stops on 429 and rejects
   const browser = await chromium.launch();
   t.after(() => browser.close());
   const sent = [], contexts = [];
-  let maxPages = 0;
+  let maxPages = 0, maxContexts = 0;
   const provider = { get: async () => ({ newContext: async options => {
     const context = await browser.newContext(options); contexts.push(context);
     const newPage = context.newPage.bind(context);
     context.newPage = async () => {
       const page = await newPage();
       maxPages = Math.max(maxPages, browser.contexts().reduce((n, context) => n + context.pages().length, 0));
+      maxContexts = Math.max(maxContexts, browser.contexts().length);
       await page.route('**/*', async route => {
         if (route.request().method() === 'POST') {
           sent.push(JSON.parse(route.request().postData()));
@@ -93,6 +94,7 @@ test('browser adapter fills, confirms, isolates guests, stops on 429 and rejects
   assert.equal(missing.confirmed, 0); await missing.close();
   await t.test('five isolated guests share one live page across queued sends', async () => {
     maxPages = 0;
+    maxContexts = 0;
     const pooled = new PadletBrowser();
     pooled.get = provider.get;
     const sessions = Array.from({ length: 5 }, () => new PadletSession({ browser: pooled, timeout: 3000 }));
@@ -103,8 +105,10 @@ test('browser adapter fills, confirms, isolates guests, stops on 429 and rejects
       }
       assert.deepEqual(await Promise.all(sessions.map(session => session.send('queued body'))), Array(5).fill('화면확인-1'));
       assert.equal(maxPages, 1);
+      assert.equal(maxContexts, 1);
       for (const [index, session] of sessions.entries()) {
-        assert.equal((await session.context.cookies()).find(cookie => cookie.name === 'guest').value, String(index));
+        const cookies = session.context ? await session.context.cookies() : session.storageState.cookies;
+        assert.equal(cookies.find(cookie => cookie.name === 'guest').value, String(index));
       }
     } finally { await Promise.all(sessions.map(session => session.close())); }
   });

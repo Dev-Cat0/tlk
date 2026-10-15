@@ -1,6 +1,6 @@
 # Padlet browser runtime
 
-The 512 MiB Render runner was killed for exceeding its memory limit when it held multiple live Padlet pages. Padlet now queues browser operations and keeps only one board page open. Guest contexts remain isolated, retaining their own cookies and local storage; switching guests closes the previous page and loads the next guest's board. The total post limit and bot count are unchanged. Configured intervals are lower bounds, not guaranteed throughput: page loads and queued work add time.
+The 512 MiB Render runner was killed for exceeding its memory limit when it held multiple live Padlet pages. Padlet now queues browser operations and keeps only one browser context and board page open. Each guest's cookies, local storage and IndexedDB state are saved separately in memory; switching guests closes the entire previous context and restores the next guest's storage before loading its board. Closing only the page retained too much context memory. The total post limit and bot count are unchanged. Configured intervals are lower bounds, not guaranteed throughput: page loads and queued work add time.
 
 Navigation and board readiness each allow up to 90 seconds. Images, media and web fonts are skipped; scripts, styles and API requests are retained. Publication is never automatically retried after an ambiguous result.
 
