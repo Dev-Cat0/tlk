@@ -90,7 +90,7 @@ test('browser adapter fills, confirms, isolates guests, stops on 429 and rejects
   assert.equal(rate.confirmed, 0); await rate.close();
   const missing = new PadletSession({ browser: provider, timeout: 3000 });
   await missing.join('https://padlet.com/test/board?unconfirmed=1');
-  await assert.rejects(missing.send('not visible'), /게시 완료/);
+  await assert.rejects(missing.send('not visible'), /보드에 게시물 표시 확인.*중복 방지/);
   assert.equal(missing.confirmed, 0); await missing.close();
   await t.test('five isolated guests share one live page across queued sends', async () => {
     maxPages = 0;

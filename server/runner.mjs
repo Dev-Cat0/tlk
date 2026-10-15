@@ -47,9 +47,9 @@ export class Runner {
       if (config.platform === 'padlet') this.log('info', '메모리 절약을 위해 익명 세션별 브라우저 화면을 하나씩 사용합니다. 실제 게시 간격은 로딩·처리 시간보다 짧아질 수 없습니다.');
       for (let i = 0; i < config.botCount; i++) {
         signal.throwIfAborted();
-        const session = config.platform === 'padlet' ? this.makePadletSession({ subject: config.subject, browser }) : this.makeSession();
-        sessions.push(session);
         const name = `${config.platform === 'padlet' ? '익명 봇' : config.prefix}-${String(i + 1).padStart(2, '0')}`;
+        const session = config.platform === 'padlet' ? this.makePadletSession({ subject: config.subject, browser, onProgress: step => this.log('info', `${name} · ${step}`) }) : this.makeSession();
+        sessions.push(session);
         if (config.platform === 'padlet') this.log('info', `${name} · 보드 로딩 중 (최대 90초 대기)`);
         try { await session.join(config.platform === 'padlet' ? config.boardUrl : config.channel, name, signal); }
         catch (error) { throw new Error(`${name} · ${error.message}`, { cause: error }); }

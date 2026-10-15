@@ -30,12 +30,13 @@ export class PadletBrowser {
 }
 
 export class PadletSession {
-  constructor({ subject = '', browser, timeout = 30000, readyTimeout = timeout * 3 }) {
+  constructor({ subject = '', browser, timeout = 30000, readyTimeout = timeout * 3, onProgress = () => {} }) {
     this.subject = subject;
     this.browser = browser;
     this.timeout = timeout;
     this.readyTimeout = readyTimeout;
     this.confirmed = 0;
+    this.onProgress = onProgress;
   }
   async operation(signal, work, message) {
     signal?.throwIfAborted();
@@ -48,7 +49,7 @@ export class PadletSession {
     } catch (error) {
       signal?.throwIfAborted();
       if (['BrowserSetupError', 'PadletAccessError'].includes(error.name)) throw error;
-      throw new Error(this.blocked || message, { cause: error });
+      throw new Error(this.blocked || (typeof message === 'function' ? message(error) : message), { cause: error });
     } finally { signal?.removeEventListener('abort', abort); }
   }
   async join(boardUrl, _name, signal) {
@@ -128,28 +129,38 @@ export class PadletSession {
     ).filter({ visible: true }).first();
   }
   async send(text, signal) {
+    let stage = '게시 차례 대기', publishAttempted = false;
+    const step = value => { stage = value; this.onProgress(value); };
     return this.operation(signal, async () => {
       if (this.blocked) throw new Error(this.blocked);
+      step('보드 다시 열기');
       await this.open(signal);
       const visibleCopies = this.page.getByText(text, { exact: true }).filter({ visible: true });
       const before = await visibleCopies.count();
+      step('작성창 열기');
       await this.postButton().click();
       const publish = this.publishButton();
       await publish.waitFor({ state: 'visible' });
       const title = this.page.getByPlaceholder(/^(Subject|Title|제목|주제)$/i).filter({ visible: true });
+      step('제목 입력');
       if (this.subject) await title.fill(this.subject);
+      step('본문 입력');
       const labeledBody = this.page.getByRole('textbox', { name: 'Post body', exact: true }).filter({ visible: true });
       const body = await labeledBody.count() ? labeledBody : this.page.locator('[contenteditable="true"][role="textbox"]:visible, [contenteditable="true"][data-placeholder]:visible');
       if (await body.count() === 1) await body.fill(text);
       else await this.page.getByPlaceholder(/Write something|내용|본문|무언가|멋진/i).filter({ visible: true }).fill(text);
       signal?.throwIfAborted();
+      step('게시 버튼 클릭');
+      publishAttempted = true;
       await publish.click();
+      step('작성창 닫힘 확인');
       await publish.waitFor({ state: 'hidden' });
       // Closing the editor alone is not confirmation; new content must appear.
+      step('보드에 게시물 표시 확인');
       await visibleCopies.nth(before).waitFor({ state: 'visible' });
       if (this.blocked) throw new Error(this.blocked);
       return `화면확인-${++this.confirmed}`;
-    }, '게시 완료를 화면에서 확인하지 못했습니다. 보드에서 게시 여부를 확인하세요. 화면 변경·승인 대기·추가 인증일 수 있으며 중복 방지를 위해 자동 재시도하지 않습니다.');
+    }, error => `${stage} 단계에서 ${error.name === 'TimeoutError' ? '대기 시간이 초과되었습니다' : '오류가 발생했습니다'}. ${publishAttempted ? '게시 요청이 전달됐을 수 있으므로 보드에서 확인하세요. 중복 방지를 위해 자동 재시도하지 않습니다.' : '게시 버튼을 누르기 전에 중지했습니다.'}`);
   }
   async close() {
     if (!this.context) return;
