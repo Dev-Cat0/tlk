@@ -1,13 +1,13 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import { randomUUID } from 'node:crypto';
 import { TlkSession } from './tlk.mjs';
-import { InstagramSession } from './instagram.mjs';
+import { PadletSession } from './padlet.mjs';
 import { validateConfig } from './config.mjs';
 
 export class Runner {
-  constructor({ makeSession = () => new TlkSession(), makeInstagramSession = options => new InstagramSession(options), sleep = (ms, signal) => delay(ms, undefined, { signal }), now = Date.now, maxDuration = 6 * 3600_000 } = {}) {
+  constructor({ makeSession = () => new TlkSession(), makePadletSession = options => new PadletSession(options), sleep = (ms, signal) => delay(ms, undefined, { signal }), now = Date.now, maxDuration = 6 * 3600_000 } = {}) {
     this.makeSession = makeSession;
-    this.makeInstagramSession = makeInstagramSession;
+    this.makePadletSession = makePadletSession;
     this.sleep = sleep;
     this.now = now;
     this.maxDuration = maxDuration;
@@ -21,12 +21,12 @@ export class Runner {
   }
   start(input) {
     if (this.pending) throw Object.assign(new Error('이미 실행 중입니다. 먼저 중지하세요.'), { status: 409 });
-    const { accessToken, ...config } = validateConfig(input);
+    const { apiKey, ...config } = validateConfig(input);
     this.controller = new AbortController();
     this.logId = 0;
     this.job = { id: randomUUID(), status: 'starting', config, sent: 0, startedAt: new Date().toISOString(), endedAt: null, nextAt: null, bots: [], logs: [] };
-    this.log('info', config.platform === 'instagram' ? `Instagram DM · ${config.recipientId} 전송을 준비합니다.` : `#${config.channel} 연결을 시작합니다.`);
-    this.pending = Promise.resolve().then(() => this.run(this.controller.signal, accessToken)).finally(() => { this.pending = null; });
+    this.log('info', config.platform === 'padlet' ? `패들렛 · ${config.boardId} 게시를 준비합니다.` : `#${config.channel} 연결을 시작합니다.`);
+    this.pending = Promise.resolve().then(() => this.run(this.controller.signal, apiKey)).finally(() => { this.pending = null; });
     return this.snapshot();
   }
   async stop() {
@@ -37,7 +37,7 @@ export class Runner {
     await this.pending;
     return this.snapshot();
   }
-  async run(signal, accessToken) {
+  async run(signal, apiKey) {
     const sessions = [];
     const { config } = this.job;
     const deadline = setTimeout(() => { this.log('info', '최대 실행 시간(6시간)에 도달했습니다.'); this.controller.abort(); }, this.maxDuration);
@@ -45,13 +45,13 @@ export class Runner {
     try {
       for (let i = 0; i < config.botCount; i++) {
         signal.throwIfAborted();
-        const session = config.platform === 'instagram' ? this.makeInstagramSession({ accountId: config.accountId, accessToken }) : this.makeSession();
+        const session = config.platform === 'padlet' ? this.makePadletSession({ apiKey, subject: config.subject, sectionId: config.sectionId }) : this.makeSession();
         sessions.push(session);
-        const name = config.platform === 'instagram' ? `Instagram ${config.accountId}` : `${config.prefix}-${String(i + 1).padStart(2, '0')}`;
+        const name = config.platform === 'padlet' ? 'Padlet 계정' : `${config.prefix}-${String(i + 1).padStart(2, '0')}`;
         await session.join(config.channel, name, signal);
         signal.throwIfAborted();
         this.job.bots.push({ name, sent: 0 });
-        this.log('info', `${name} ${config.platform === 'instagram' ? '전송 준비 완료' : '참가 완료'}`);
+        this.log('info', `${name} ${config.platform === 'padlet' ? '전송 준비 완료' : '참가 완료'}`);
       }
       this.job.status = 'running';
       const workers = new AbortController();
