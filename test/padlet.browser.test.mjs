@@ -4,7 +4,7 @@ import { PadletSession } from '../server/padlet.mjs';
 
 // Opt-in local fixture: no requests or posts are sent to Padlet.
 const enabled = process.env.BROWSER_TESTS === '1';
-const fixture = `<!doctype html><button id="add">Add post</button><section id="posts"></section>
+const fixture = `<!doctype html><meta charset="utf-8"><button id="add">Add post</button><section id="posts"></section>
 <div id="composer" hidden><input placeholder="Subject"><div role="textbox" contenteditable="true"></div><button id="publish">Publish</button></div>
 <script>
 document.querySelector('#add').onclick = () => document.querySelector('#composer').hidden = false;
@@ -22,6 +22,17 @@ document.querySelector('#publish').onclick = async () => {
 };
 </script>`;
 
+// Observed on the live board: aria-labels override the visible Publish text,
+// section buttons precede the main action, and the body is labeled Post body.
+function currentFixture({ testIds = true, english = false } = {}) {
+  return fixture
+    .replace('<button id="add">Add post</button>', `<button>이 섹션에 게시 추가</button><button id="add" ${testIds ? 'data-testid="surfaceAddPostButton"' : ''} aria-label="${english ? 'Create a new post' : '새 게시 작성하기'}">+</button>`)
+    .replace('<input placeholder="Subject">', '<textarea aria-label="게시물 제목" placeholder="제목"></textarea>')
+    .replace('<div role="textbox" contenteditable="true">', '<div role="textbox" aria-label="Post body" contenteditable="true">')
+    .replace('<button id="publish">Publish</button>', `<button id="publish" ${testIds ? 'data-testid="publishPostButton"' : ''} aria-label="${english ? 'Publish post' : '게시물 게시'}">게시</button>`)
+    .replace("document.querySelector('input').value", "document.querySelector('textarea').value");
+}
+
 test('browser adapter fills, confirms, isolates guests, stops on 429 and rejects missing confirmation', { skip: !enabled }, async t => {
   const { chromium } = await import('playwright');
   const browser = await chromium.launch();
@@ -36,7 +47,10 @@ test('browser adapter fills, confirms, isolates guests, stops on 429 and rejects
         if (route.request().method() === 'POST') {
           sent.push(JSON.parse(route.request().postData()));
           await route.fulfill({ status: new URL(page.url()).searchParams.has('rate') ? 429 : 200, body: '{}' });
-        } else await route.fulfill({ contentType: 'text/html', body: fixture });
+        } else {
+          const params = new URL(route.request().url()).searchParams;
+          await route.fulfill({ status: params.has('denied') ? 403 : 200, contentType: 'text/html', body: params.has('current') ? currentFixture({ testIds: !params.has('noids'), english: params.has('english') }) : params.has('readonly') ? '<h1>Read-only board</h1>' : fixture });
+        }
       });
       return page;
     };
@@ -52,6 +66,21 @@ test('browser adapter fills, confirms, isolates guests, stops on 429 and rejects
   assert.equal(await first.send('내용'), '화면확인-2');
   assert.deepEqual(sent.slice(0, 2), [{ title: '제목', text: '내용' }, { title: '제목', text: '내용' }]);
   await first.close(); await second.close();
+  for (const query of ['current', 'current&english=1', 'current&noids=1', 'current&english=1&noids=1']) {
+    await t.test(`current Padlet composer: ${query}`, async () => {
+      const session = new PadletSession({ browser: provider, subject: '제목', timeout: 3000 });
+      try {
+        await session.join(`https://padlet.com/test/board?${query}`);
+        assert.equal(await session.send('본문'), '화면확인-1');
+        assert.deepEqual(sent.at(-1), { title: '제목', text: '본문' });
+      } finally { await session.close(); }
+    });
+  }
+  for (const [query, error] of [['denied', /HTTP 403/], ['readonly', /페이지는 열렸지만.*작성 버튼/]]) {
+    const session = new PadletSession({ browser: provider, timeout: 300 });
+    try { await assert.rejects(session.join(`https://padlet.com/test/board?${query}`), error); }
+    finally { await session.close(); }
+  }
   const rate = new PadletSession({ browser: provider, timeout: 10000 });
   await rate.join('https://padlet.com/test/board?rate=1');
   await assert.rejects(rate.send('limited'), /전송 제한/);

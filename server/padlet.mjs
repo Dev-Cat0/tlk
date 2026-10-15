@@ -29,7 +29,7 @@ export class PadletSession {
       return result;
     } catch (error) {
       signal?.throwIfAborted();
-      if (error.name === 'BrowserSetupError') throw error;
+      if (['BrowserSetupError', 'PadletAccessError'].includes(error.name)) throw error;
       throw new Error(this.blocked || message, { cause: error });
     } finally { signal?.removeEventListener('abort', abort); }
   }
@@ -59,12 +59,28 @@ export class PadletSession {
         if (this.blocked) void this.close();
       });
       const response = await this.page.goto(boardUrl, { waitUntil: 'domcontentloaded' });
-      if (!response?.ok()) throw new Error('board unavailable');
-      await this.postButton().waitFor({ state: 'visible' });
+      if (!response?.ok()) {
+        const status = response?.status();
+        throw Object.assign(new Error(`패들렛 보드를 불러오지 못했습니다${status ? ` (HTTP ${status})` : ''}. 링크와 접근 권한을 확인하세요.`), { name: 'PadletAccessError' });
+      }
+      try { await this.postButton().waitFor({ state: 'visible' }); }
+      catch (error) {
+        if (this.blocked || signal?.aborted) throw error;
+        throw Object.assign(new Error('패들렛 페이지는 열렸지만 게시물 작성 버튼을 찾지 못했습니다. 방문자 작성 권한·로그인 요구·페이지 로딩 상태를 확인하세요.'), { name: 'PadletAccessError', cause: error });
+      }
     }, '익명 게시 화면을 열지 못했습니다. 링크·방문자 작성 권한·로그인 요구 여부를 확인하세요.');
   }
   postButton() {
-    return this.page.getByRole('button', { name: /^(?:\+\s*)?(?:Add (?:a )?post|Post|New post|게시물 추가|게시물 작성|새 게시물)(?:\s*\(.*\))?$/i }).filter({ visible: true }).first();
+    // Padlet's current accessible names differ from the visible button text.
+    // Its test IDs also work across board languages and section layouts.
+    return this.page.getByTestId('surfaceAddPostButton').or(
+      this.page.getByRole('button', { name: /^(?:\+\s*)?(?:Add (?:a )?post|Post|New post|(?:Create|Write) (?:a )?new post|게시물 추가|게시물 작성|새 게시물|새 게시 작성하기)(?:\s*\(.*\))?$/i })
+    ).filter({ visible: true }).first();
+  }
+  publishButton() {
+    return this.page.getByTestId('publishPostButton').or(
+      this.page.getByRole('button', { name: /^(?:Publish(?: post)?|게시|게시하기|게시물 게시|발행)$/i })
+    ).filter({ visible: true }).first();
   }
   async send(text, signal) {
     return this.operation(signal, async () => {
@@ -72,11 +88,12 @@ export class PadletSession {
       const visibleCopies = this.page.getByText(text, { exact: true }).filter({ visible: true });
       const before = await visibleCopies.count();
       await this.postButton().click();
-      const publish = this.page.getByRole('button', { name: /^(Publish|게시|게시하기|발행)$/i }).filter({ visible: true });
+      const publish = this.publishButton();
       await publish.waitFor({ state: 'visible' });
       const title = this.page.getByPlaceholder(/^(Subject|Title|제목|주제)$/i).filter({ visible: true });
       if (this.subject) await title.fill(this.subject);
-      const body = this.page.locator('[contenteditable="true"][role="textbox"]:visible, [contenteditable="true"][data-placeholder]:visible');
+      const labeledBody = this.page.getByRole('textbox', { name: 'Post body', exact: true }).filter({ visible: true });
+      const body = await labeledBody.count() ? labeledBody : this.page.locator('[contenteditable="true"][role="textbox"]:visible, [contenteditable="true"][data-placeholder]:visible');
       if (await body.count() === 1) await body.fill(text);
       else await this.page.getByPlaceholder(/Write something|내용|본문|무언가|멋진/i).filter({ visible: true }).fill(text);
       signal?.throwIfAborted();
