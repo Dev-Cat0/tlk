@@ -53,11 +53,11 @@ test('guest config accepts full custom links, preserves sharing query, and needs
   for (const patch of [{ botCount: 0 }, { botCount: 1.5 }, { botCount: Infinity }, { interval: -1 }, { limit: 1.5 }, { message: '' }, { subject: 'x'.repeat(201) }]) assert.throws(() => validateConfig({ ...config, ...patch }));
 });
 
-test('Padlet bots use separate sessions, a shared browser, independent intervals and a shared limit', async () => {
-  const joined = [], options = [], waits = [], closed = [];
+test('Padlet reuses each guest for its quota and sends before loading the next guest', async () => {
+  const joined = [], options = [], waits = [], closed = [], events = [];
   const runner = new Runner({ now: () => 0, sleep: async ms => waits.push(ms), makePadletSession: option => {
     const index = options.push(option) - 1;
-    return { join: async (url, name) => joined.push({ url, name }), send: async () => 'confirmed', close: async () => closed.push(index) };
+    return { join: async (url, name) => { joined.push({ url, name }); events.push(`join-${index}`); }, send: async () => { events.push(`send-${index}`); return 'confirmed'; }, close: async () => closed.push(index) };
   } });
   runner.start(config);
   await runner.pending;
@@ -69,16 +69,50 @@ test('Padlet bots use separate sessions, a shared browser, independent intervals
   assert.ok(options.every(option => option.browser === options[0].browser && option.subject === config.subject));
   assert.deepEqual(waits, [250, 250, 250, 250]);
   assert.deepEqual(closed, [0, 1, 2]);
+  assert.deepEqual(events, ['join-0', 'send-0', 'send-0', 'send-0', 'join-1', 'send-1', 'send-1', 'join-2', 'send-2', 'send-2']);
 });
 
-test('Padlet failure stops all workers and waits for asynchronous browser cleanup', async () => {
+test('Padlet failure stops before starting another guest and awaits cleanup', async () => {
   let closed = 0;
   const runner = new Runner({ makePadletSession: () => ({ join: async () => {}, send: async () => { throw new Error('permission denied'); }, close: async () => { await new Promise(resolve => setImmediate(resolve)); closed++; } }) });
   runner.start(config);
   await runner.pending;
   assert.equal(runner.snapshot().status, 'failed');
   assert.equal(runner.snapshot().sent, 0);
-  assert.equal(closed, 3);
+  assert.equal(closed, 1);
+});
+
+test('Padlet skips unused guests and does not add a timer when sending already took the interval', async () => {
+  let now = 0, joined = 0, waits = 0;
+  const runner = new Runner({ now: () => now, sleep: async () => { waits++; }, makePadletSession: () => ({
+    join: async () => { joined++; }, send: async () => { now += 100; return 'confirmed'; }, close: async () => {}
+  }) });
+  runner.start({ ...config, botCount: 5, limit: 2, interval: 0.05 });
+  await runner.pending;
+  assert.equal(joined, 2);
+  assert.equal(runner.snapshot().sent, 2);
+  runner.start({ ...config, botCount: 1, limit: 4, interval: 0.05 });
+  await runner.pending;
+  assert.equal(runner.snapshot().sent, 4);
+  assert.equal(waits, 0);
+});
+
+test('Padlet stop during interval never sends the next post or starts the next guest', async () => {
+  let waiting, joined = 0, sent = 0, closed = 0;
+  const gate = new Promise(resolve => { waiting = resolve; });
+  const runner = new Runner({ now: () => 0, sleep: async (_ms, signal) => {
+    waiting();
+    await new Promise((resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
+  }, makePadletSession: () => ({
+    join: async () => { joined++; }, send: async () => { sent++; return 'confirmed'; }, close: async () => { closed++; }
+  }) });
+  runner.start(config);
+  await gate;
+  await runner.stop();
+  assert.equal(runner.snapshot().status, 'stopped');
+  assert.equal(sent, 1);
+  assert.equal(joined, 1);
+  assert.equal(closed, 1);
 });
 
 test('stop during browser startup releases a context created after cancellation', async () => {

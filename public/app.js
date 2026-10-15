@@ -52,7 +52,7 @@ function updatePlatform() {
   document.querySelector('label[for="message"]').textContent = padlet ? '게시물 내용' : '보낼 메시지';
   document.querySelector('label[for="limit"]').textContent = padlet ? '총 게시 수' : '총 전송 수';
   document.querySelector('label[for="interval"]').textContent = padlet ? '게시 간격' : '전송 간격';
-  $('schedule-help').textContent = padlet ? '익명 봇들이 차례로 게시합니다. 총 게시 수는 모든 봇의 합계입니다. 설정한 간격은 각 봇의 최소 대기 간격이며, 실제 게시에는 보드 로딩과 앞선 봇의 처리 시간이 더해집니다. 여러 봇의 준비에는 수 분이 걸릴 수 있습니다.' : '각 봇이 설정한 간격마다 독립적으로 보냅니다. 첫 메시지는 연결 완료 후 바로 전송되며, 총 전송 수는 모든 봇의 합계입니다.';
+  $('schedule-help').textContent = padlet ? '총 게시 수를 봇별로 나누고, 각 봇이 맡은 글을 같은 화면에서 연속 게시합니다. 첫 봇이 준비되면 바로 시작합니다. 간격 0은 게시 완료 후 다음 글을 바로 작성하며, 실제 속도는 패들렛 응답 시간에 따라 달라집니다.' : '각 봇이 설정한 간격마다 독립적으로 보냅니다. 첫 메시지는 연결 완료 후 바로 전송되며, 총 전송 수는 모든 봇의 합계입니다.';
   $('form-note').textContent = padlet ? '운영하거나 자동 게시가 허용된 보드에서 사용하세요.' : '운영하거나 자동 전송이 허용된 채널에서 사용하세요.';
   updateSummary();
 }
@@ -61,7 +61,7 @@ function updateSummary() {
   $('char-count').textContent = `${$('message').value.length.toLocaleString('ko-KR')} / 1,000`;
   const display = id => $(id).validity.valid ? decimalText($(id).value) : '—';
   const sender = `${config.platform === 'padlet' ? '익명 봇' : '봇'} ${display('bot-count')}개가 각각`;
-  $('summary').textContent = config.platform === 'padlet' ? `익명 봇 ${display('bot-count')}개가 순차 처리 · 합계 ${display('limit')}건 게시` : `${sender} ${display('interval')}초 간격으로 합계 ${display('limit')}건 전송`;
+  $('summary').textContent = config.platform === 'padlet' ? `익명 봇 ${display('bot-count')}개가 나누어 연속 처리 · 합계 ${display('limit')}건 게시` : `${sender} ${display('interval')}초 간격으로 합계 ${display('limit')}건 전송`;
 }
 function validateNumber(id, normalize = false) {
   const input = $(id);

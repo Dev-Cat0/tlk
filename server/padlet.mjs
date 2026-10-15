@@ -133,7 +133,7 @@ export class PadletSession {
     const step = value => { stage = value; this.onProgress(value); };
     return this.operation(signal, async () => {
       if (this.blocked) throw new Error(this.blocked);
-      step('보드 다시 열기');
+      step(this.page && !this.page.isClosed() ? '열린 보드 재사용' : '보드 다시 열기');
       await this.open(signal);
       const visibleCopies = this.page.getByText(text, { exact: true }).filter({ visible: true });
       const before = await visibleCopies.count();

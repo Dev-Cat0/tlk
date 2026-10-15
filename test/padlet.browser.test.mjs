@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PadletSession, PadletBrowser } from '../server/padlet.mjs';
+import { Runner } from '../server/runner.mjs';
 
 // Opt-in local fixture: no requests or posts are sent to Padlet.
 const enabled = process.env.BROWSER_TESTS === '1';
@@ -161,6 +162,24 @@ test('browser adapter fills, confirms, isolates guests, stops on 429 and rejects
         assert.equal(cookies.find(cookie => cookie.name === 'guest').value, String(index));
       }
     } finally { await Promise.all(sessions.map(session => session.close())); }
+  });
+  await t.test('runner loads five boards for twenty posts and keeps only one context live', async () => {
+    const start = contexts.length, postsBefore = sent.length;
+    maxPages = 0; maxContexts = 0;
+    const runner = new Runner({ makePadletSession: options => {
+      options.browser.get = provider.get;
+      return new PadletSession({ ...options, timeout: 3000 });
+    } });
+    runner.start({ platform: 'padlet', boardUrl: 'https://padlet.com/test/board?guest', subject: 'dd', message: 'dd', botCount: 5, interval: 0, limit: 20 });
+    await runner.pending;
+    assert.equal(runner.snapshot().status, 'completed');
+    assert.equal(runner.snapshot().sent, 20);
+    assert.deepEqual(runner.snapshot().bots.map(bot => bot.sent), [4, 4, 4, 4, 4]);
+    assert.equal(contexts.length - start, 5);
+    assert.equal(sent.length - postsBefore, 20);
+    assert.equal(maxPages, 1);
+    assert.equal(maxContexts, 1);
+    assert.equal(browser.contexts().length, 0);
   });
 });
 

@@ -44,7 +44,13 @@ export class Runner {
     const deadline = setTimeout(() => { this.log('info', '최대 실행 시간(6시간)에 도달했습니다.'); this.controller.abort(); }, this.maxDuration);
     deadline.unref?.();
     try {
-      if (config.platform === 'padlet') this.log('info', '메모리 절약을 위해 익명 세션별 브라우저 화면을 하나씩 사용합니다. 실제 게시 간격은 로딩·처리 시간보다 짧아질 수 없습니다.');
+      if (config.platform === 'padlet' && !config.checkOnly) {
+        await this.runPadlet(config, sessions, browser, signal);
+        signal.throwIfAborted();
+        this.job.status = 'completed';
+        this.log('success', `총 ${this.job.sent}건 전송을 완료했습니다.`);
+        return;
+      }
       for (let i = 0; i < config.botCount; i++) {
         signal.throwIfAborted();
         const name = `${config.platform === 'padlet' ? '익명 봇' : config.prefix}-${String(i + 1).padStart(2, '0')}`;
@@ -119,6 +125,42 @@ export class Runner {
       await browser?.close();
       this.job.nextAt = null;
       this.job.endedAt = new Date().toISOString();
+    }
+  }
+  async runPadlet(config, sessions, browser, signal) {
+    // Keep one guest's board alive for its whole quota. Round-robin sends used
+    // to destroy and reload a context for every post on the 512 MiB runner.
+    const count = Math.min(config.botCount, config.limit);
+    this.log('info', '봇별 게시물을 나누어 같은 화면에서 연속 처리합니다. 각 봇은 보드를 한 번만 불러옵니다.');
+    for (let index = 0; index < count; index++) {
+      signal.throwIfAborted();
+      const name = `익명 봇-${String(index + 1).padStart(2, '0')}`;
+      const quota = Math.floor(config.limit / count) + (index < config.limit % count ? 1 : 0);
+      const session = this.makePadletSession({ subject: config.subject, browser, onProgress: step => this.log('info', `${name} · ${step}`) });
+      sessions.push(session);
+      this.log('info', `${name} · 보드 로딩 중 (최대 90초 대기, ${quota}건 담당)`);
+      try { await session.join(config.boardUrl, name, signal); }
+      catch (error) { throw new Error(`${name} · ${error.message}`, { cause: error }); }
+      signal.throwIfAborted();
+      const bot = { name, sent: 0 };
+      this.job.bots.push(bot);
+      this.job.status = 'running';
+      this.log('info', `${name} 전송 준비 완료`);
+      let nextAt = null;
+      for (let post = 0; post < quota; post++) {
+        signal.throwIfAborted();
+        if (nextAt !== null && nextAt > this.now()) {
+          this.job.nextAt = new Date(nextAt).toISOString();
+          await this.sleep(Math.max(0, nextAt - this.now()), signal);
+        }
+        this.job.nextAt = null;
+        signal.throwIfAborted();
+        nextAt = this.now() + config.interval * 1000;
+        const id = await session.send(config.message, signal);
+        this.job.sent++;
+        bot.sent++;
+        this.log('success', `${name} · 전송 완료 #${id}`);
+      }
     }
   }
 }
